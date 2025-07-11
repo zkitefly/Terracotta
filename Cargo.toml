@@ -6,10 +6,11 @@ build = "build.rs"
 
 [dependencies]
 lazy_static = "1.5.0"
+local-ip-address = "0.6.5"
 num-bigint = "0.4.6"
 open = { version = "5.3.2", default-features = false }
 rand_core = { version = "0.9.3", features = ["os_rng"] }
-rocket = { version = "0.5.1", features = ["json"] }
+rocket = { version = "0.5.1", default-features = false, features = ["json"] }
 sevenz-rust2 = { version = "0.16.0", default-features = false, features = [
     "util",
 ] }

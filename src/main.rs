@@ -168,7 +168,7 @@ fn set_state_guesting(room: Option<String>) -> Status {
 
 #[rocket::main]
 async fn main() {
-    let holder = single_instance::SingleInstance::new("whatever").unwrap();
+    let holder = single_instance::SingleInstance::new("terracotta-rs-easytier").unwrap();
     if !holder.is_single() {
         let _ = open::that("http://127.0.0.1:8000/");
         return;
@@ -191,6 +191,7 @@ async fn main() {
     .attach(AdHoc::on_liftoff("Open Browser", |_| {
         Box::pin(async {
             let _ = open::that("http://127.0.0.1:8000/");
+            let _unused = access_state();
         })
     }))
     .ignite()
