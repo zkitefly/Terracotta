@@ -15,7 +15,7 @@ fn main() {
         Path::new(&env::var_os("OUT_DIR").unwrap()).join("__webstatics.7z"),
     )
     .unwrap();
-    println!("cargo:rerun-if-changed=web");
+    println!("cargo::rerun-if-changed=web");
 
     if cfg!(target_os = "windows") {
         let mut res = winres::WindowsResource::new();
@@ -43,14 +43,14 @@ fn main() {
 
         match std::env::var("CARGO_CFG_TARGET_ENV").unwrap().as_str() {
             "gnu" => println!(
-                "cargo:rustc-link-arg={}",
+                "cargo::rustc-link-arg={}",
                 Path::new(&env::var("OUT_DIR").unwrap())
                     .join("resource.o")
                     .to_str()
                     .unwrap()
             ),
             "msvc" => println!(
-                "cargo:rustc-link-arg={}",
+                "cargo::rustc-link-arg={}",
                 Path::new(&env::var("OUT_DIR").unwrap())
                     .join("resource.res")
                     .to_str()
@@ -58,23 +58,16 @@ fn main() {
             ),
             _ => panic!(),
         }
-        println!("cargo:rerun-if-changed=icon.ico");
+        println!("cargo::rerun-if-changed=icon.ico");
     }
 }
 
 fn download_easytier() {
-    let base = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap()).join(".easytier");
-    let entry_conf = base.clone().join("entry-conf.v1.txt");
-    let entry_archive = base.clone().join("easytier.7z");
-
-    if fs::metadata(entry_conf.clone()).is_ok() {
-        return;
-    }
-
     struct EasytierFiles {
         url: &'static str,
         files: Vec<&'static str>,
         entry: &'static str,
+        desc: &'static str,
     }
 
     let conf: EasytierFiles = if cfg!(target_os = "windows") {
@@ -87,6 +80,7 @@ fn download_easytier() {
                     "easytier-windows-x86_64/wintun.dll",
                 ],
                 entry: "easytier-core.exe",
+                desc: "windows-x86_64"
             }
         } else if cfg!(target_arch = "aarch64") {
             EasytierFiles {
@@ -97,6 +91,7 @@ fn download_easytier() {
                     "easytier-windows-arm64/wintun.dll",
                 ],
                 entry: "easytier-core.exe",
+                desc: "windows-arm64"
             }
         } else {
             panic!("Unsupported target_arch: {}", std::env::consts::ARCH);
@@ -107,6 +102,7 @@ fn download_easytier() {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/v2.3.2/easytier-linux-x86_64-v2.3.2.zip",
                 files: vec!["easytier-linux-x86_64/easytier-core"],
                 entry: "easytier-core",
+                desc: "linux-x86_64"
             }
         } else {
             panic!("Unsupported target_arch: {}", std::env::consts::ARCH);
@@ -114,6 +110,19 @@ fn download_easytier() {
     } else {
         panic!("Unsupported target_os: {}", std::env::consts::OS);
     };
+
+    println!("cargo::rustc-env=TERRACOTTA_ET={}", conf.desc);
+    let base = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap()).join(".easytier").join(conf.desc);
+    let entry_conf = base.clone().join("entry-conf.v1.txt");
+    let entry_archive = base.clone().join("easytier.7z");
+
+    if fs::metadata(entry_conf.clone()).is_ok() {
+        return;
+    }
+
+    if !fs::metadata(base.clone()).is_ok() {
+        fs::create_dir_all(base.clone()).unwrap();
+    }
 
     let source =
         Path::new(&env::temp_dir()).join(format!("terracotta-build-rs-{}.zip", process::id()));
@@ -139,10 +148,17 @@ fn download_easytier() {
         let mut entry = archive.by_name(file).unwrap();
         entry.read_to_end(&mut buf).unwrap();
 
-        writer.push_archive_entry(
-            sevenz_rust2::ArchiveEntry::from_path("", entry.name().to_string()),
-            Some(io::Cursor::new(buf)),
-        ).unwrap();
+        writer
+            .push_archive_entry(
+                sevenz_rust2::ArchiveEntry::from_path(
+                    "",
+                    Path::new(&entry.enclosed_name().unwrap())
+                        .file_name()
+                        .unwrap().to_str().unwrap().to_string(),
+                ),
+                Some(io::Cursor::new(buf)),
+            )
+            .unwrap();
     }
 
     writer.finish().unwrap();
