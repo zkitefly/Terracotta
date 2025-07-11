@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terracotta | 陶瓦 - Minecraft联机助手</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #f0f0f0;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow-x: hidden;
+            scrollbar-color: #b5958c #16213e;
+            user-select: none;
+        }
+
+        .container {
+            width: 100%;
+            padding: 20px;
+            text-align: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 80px;
+            right: 0;
+            overflow: auto;
+        }
+
+        header {
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            font-weight: 300;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, #ff9a9e, #fad0c4);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: -1px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .subtitle {
+            font-size: 1.4rem;
+            font-weight: 300;
+            opacity: 0.85;
+            margin-top: 10px;
+        }
+
+        .view-container {
+            position: relative;
+            margin: 30px 0;
+        }
+
+        .view {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            opacity: 0;
+            pointer-events: none;
+            transition: display opacity 0.5s ease;
+            padding: 20px;
+            display: none;
+        }
+
+        .view.active {
+            opacity: 1;
+            display: block;
+            pointer-events: all;
+        }
+
+        .role-selection {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 30px;
+            margin: 40px 0;
+        }
+
+        .tile {
+            width: 400px;
+            height: 300px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tile:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .tile::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 8px;
+            background: linear-gradient(90deg, #ff9a9e, #fad0c4);
+        }
+
+        .tile-icon {
+            font-size: 4.5rem;
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+
+        .tile-title {
+            font-size: 2.2rem;
+            font-weight: 300;
+            margin-bottom: 15px;
+        }
+
+        .tile-description {
+            font-size: 1.1rem;
+            font-weight: 300;
+            opacity: 0.8;
+            line-height: 1.5;
+        }
+
+        #host-tile {
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        #host-tile::before {
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+        }
+
+        #guest-tile {
+            background: rgba(33, 150, 243, 0.1);
+        }
+
+        #guest-tile::before {
+            background: linear-gradient(90deg, #2196F3, #03A9F4);
+        }
+
+        .loading-view {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-evenly;
+            align-items: center;
+            height: 400px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 40px;
+            max-width: 600px;
+            margin: 0 auto;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .loading-spinner {
+            width: 80px;
+            height: 80px;
+            position: relative;
+            margin-bottom: 30px;
+        }
+
+        .loading-spinner div {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #4CAF50;
+            animation: loading 1.2s linear infinite;
+        }
+
+        .loading-spinner div:nth-child(1) {
+            top: 8px;
+            left: 8px;
+            animation-delay: 0s;
+            background: #f44336;
+        }
+
+        .loading-spinner div:nth-child(2) {
+            top: 8px;
+            left: 32px;
+            animation-delay: -0.4s;
+            background: #ff9800;
+        }
+
+        .loading-spinner div:nth-child(3) {
+            top: 8px;
+            left: 56px;
+            animation-delay: -0.8s;
+            background: #ffeb3b;
+        }
+
+        .loading-spinner div:nth-child(4) {
+            top: 32px;
+            left: 8px;
+            animation-delay: -0.4s;
+            background: #4CAF50;
+        }
+
+        .loading-spinner div:nth-child(5) {
+            top: 32px;
+            left: 32px;
+            animation-delay: -0.8s;
+            background: #2196F3;
+        }
+
+        .loading-spinner div:nth-child(6) {
+            top: 32px;
+            left: 56px;
+            animation-delay: -1.2s;
+            background: #9c27b0;
+        }
+
+        .loading-spinner div:nth-child(7) {
+            top: 56px;
+            left: 8px;
+            animation-delay: -0.8s;
+            background: #00bcd4;
+        }
+
+        .loading-spinner div:nth-child(8) {
+            top: 56px;
+            left: 32px;
+            animation-delay: -1.2s;
+            background: #795548;
+        }
+
+        .loading-spinner div:nth-child(9) {
+            top: 56px;
+            left: 56px;
+            animation-delay: -1.6s;
+            background: #607d8b;
+        }
+
+        .loading-text {
+            font-size: 1.5rem;
+            margin-top: 20px;
+            color: #fad0c4;
+        }
+
+        .result-view {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 40px;
+            max-width: 600px;
+            margin: 0 auto;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .result-icon {
+            font-size: 5rem;
+            margin-bottom: 25px;
+            color: #4CAF50;
+        }
+
+        .result-title {
+            font-size: 2.2rem;
+            margin-bottom: 20px;
+            color: #fad0c4;
+        }
+
+        .invite-code {
+            font-size: 1rem;
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px 30px;
+            border-radius: 8px;
+            margin: 20px 0;
+            letter-spacing: 3px;
+            color: #8BC34A;
+            border: 2px dashed rgba(139, 195, 74, 0.3);
+            user-select: all;
+        }
+
+        .result-description {
+            font-size: 1.1rem;
+            opacity: 0.8;
+            line-height: 1.6;
+            margin: 25px 0;
+        }
+
+        .input-view {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 40px;
+            max-width: 500px;
+            margin: 0 auto;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .input-title {
+            font-size: 2rem;
+            margin-bottom: 30px;
+            color: #fad0c4;
+        }
+
+        .input-group {
+            margin-bottom: 30px;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 1.2rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: white;
+            text-align: center;
+            letter-spacing: 2px;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: #2196F3;
+            box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.3);
+        }
+
+        .input-hint {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            opacity: 0.6;
+            font-style: italic;
+        }
+
+        .action-button {
+            background: linear-gradient(135deg, #2196F3, #21CBF3);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px;
+        }
+
+        .action-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .action-button:active {
+            transform: translateY(1px);
+        }
+
+        .back-button {
+            background: linear-gradient(135deg, #757575, #9e9e9e);
+        }
+
+        .community-link {
+            margin: 0px auto 0;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            max-width: 600px;
+            width: 100%;
+            animation: fadeIn 1.5s ease-out;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .community-link h3 {
+            font-size: 1.4rem;
+            font-weight: 400;
+            margin-bottom: 15px;
+            color: #fad0c4;
+        }
+
+        .community-link p {
+            font-size: 1.1rem;
+            opacity: 0.8;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            max-width: 80%;
+        }
+
+        .join-button {
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1.1rem;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+        }
+
+        .join-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .join-button:active {
+            transform: translateY(1px);
+        }
+
+        footer {
+            margin-top: 40px;
+            font-size: 0.9rem;
+            opacity: 0.6;
+            text-align: center;
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        @keyframes loading {
+
+            0%,
+            100% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(0.5);
+            }
+        }
+
+        @keyframes gradientMove {
+            0% {
+                background-position: 0% 0%;
+            }
+
+            50% {
+                background-position: 100% 100%;
+            }
+
+            100% {
+                background-position: 0% 0%;
+            }
+        }
+
+        .tile:hover .tile-icon {
+            animation: pulse 1.5s infinite;
+        }
+
+        @media (max-width: 900px) {
+            .role-selection {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .tile {
+                width: 100%;
+                max-width: 400px;
+            }
+
+            .community-link {
+                max-width: 400px;
+            }
+
+            h1 {
+                font-size: 2.8rem;
+            }
+
+            .input-view,
+            .result-view,
+            .error-view {
+                padding: 30px 20px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 2.2rem;
+            }
+
+            .tile {
+                height: 250px;
+            }
+
+            .tile-title {
+                font-size: 1.8rem;
+            }
+
+            .community-link p {
+                max-width: 100%;
+            }
+
+            .input-field {
+                padding: 12px 15px;
+                font-size: 1rem;
+            }
+        }
+
+        .qq-url {
+            text-decoration: none;
+            color: #00bcd4;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1 style="font-weight: bold;">Terracotta | 陶瓦</h1>
+            <!-- <div class="subtitle">基于 EasyTier 的 Minecraft 联机助手</div> -->
+        </header>
+
+        <div class="view-container">
+            <div class="view active" id="main-view">
+                <div class="role-selection">
+                    <div class="tile" id="host-tile">
+                        <div class="tile-icon">👑</div>
+                        <h2 class="tile-title">我想当房主</h2>
+                        <p class="tile-description">创建游戏房间并生成邀请码，与好友一起畅玩</p>
+                    </div>
+
+                    <div class="tile" id="guest-tile">
+                        <div class="tile-icon">👥</div>
+                        <h2 class="tile-title">我想当房客</h2>
+                        <p class="tile-description">输入房主提供的邀请码加入游戏世界</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="view" id="host-loading-view">
+                <div class="loading-view">
+                    <div class="loading-spinner">
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                    </div>
+                    <div class="loading-text">请进入单人存档，按下 ESC 键，选择对局域网开放，点击创建局域网世界。</div>
+                    <button class="action-button back-button" id="host-loading-back-button">
+                        <i class="fas fa-arrow-left"></i>
+                        返回
+                    </button>
+                </div>
+            </div>
+
+            <div class="view" id="host-result-view">
+                <div class="result-view">
+                    <div class="result-icon">✅</div>
+                    <h2 class="result-title">成功创建房间</h2>
+                    <div class="invite-code" id="invite-code-display">*****-*****-*****-*****-*****</div>
+                    <p class="result-description">请将此邀请码分享给您的朋友，他们可以使用此代码加入您的Minecraft世界。</p>
+                    <button class="action-button back-button" id="host-back-button">
+                        <i class="fas fa-arrow-left"></i>
+                        返回主页
+                    </button>
+                </div>
+            </div>
+
+            <div class="view" id="guest-loading-view">
+                <div class="loading-view">
+                    <div class="loading-spinner">
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                    </div>
+                    <div class="loading-text">正在加入房间，请稍后</div>
+                    <button class="action-button back-button" id="guest-loading-back-button">
+                        <i class="fas fa-arrow-left"></i>
+                        返回
+                    </button>
+                </div>
+            </div>
+
+            <div class="view" id="guest-input-view">
+                <div class="input-view">
+                    <h2 class="input-title">请输入邀请码</h2>
+                    <div class="input-group">
+                        <input type="text" class="input-field" id="invite-code-input"
+                            placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX">
+                        <p class="input-hint" id="input-hint">没有邀请码？请创建房间。</p>
+                    </div>
+                    <button class="action-button" id="join-button">
+                        <i class="fas fa-sign-in-alt"></i>
+                        加入房间
+                    </button>
+                    <button class="action-button back-button" id="guest-back-button">
+                        <i class="fas fa-arrow-left"></i>
+                        返回
+                    </button>
+                </div>
+            </div>
+
+            <div class="view" id="guest-result-view">
+                <div class="result-view">
+                    <div class="result-icon">🎮</div>
+                    <h2 class="result-title">成功加入房间</h2>
+                    <p class="result-description">现在可以进入多人游戏了！</p>
+                    <p class="result-description">备用联机地址：<span id="guest-backup-address">*</span></p>
+                    <button class="action-button back-button" id="guest-result-back-button">
+                        <i class="fas fa-home"></i>
+                        返回主页
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <footer>
+        <p>需要帮助？<a class="qq-url" href="https://docs.hmcl.net/groups.html">加入 QQ 群</a></p>
+        <p>Terracotta | 陶瓦 - 让 Minecraft 联机更简单</p>
+    </footer>
+    <script>
+        const showView = viewID => {
+            document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
+            document.getElementById(viewID).classList.add('active');
+        };
+
+        let state = { "state": "waiting" };
+        if (new URL(location.href).protocol != "file:") {
+            setInterval(() => fetch("/state").then(r => r.json()).then(r => {
+                if (r.state == "waiting") {
+                    if (["main-view", "guest-input-view"].indexOf(document.getElementsByClassName("active")[0].id) == -1) {
+                        showView("main-view");
+                    }
+                } else if (r.state == "scanning") {
+                    showView("host-loading-view");
+                } else if (r.state == "hosting") {
+                    showView("host-result-view");
+                    if (document.getElementById("invite-code-display").innerText != r.room) {
+                        document.getElementById("invite-code-display").innerText = r.room;
+                    }
+                } else if (r.state == "guesting") {
+                    showView("guest-result-view");
+                    document.getElementById("guest-backup-address").innerText = r.url.join(" 或 ")
+                }
+            }), 500);
+        }
+
+        ['host-loading-back-button', "host-back-button", 'guest-loading-back-button', 'guest-back-button', 'guest-result-back-button'].forEach(id => {
+            document.getElementById(id).addEventListener('click', () => {
+                showView('main-view');
+                fetch("/state/ide");
+            });
+        });
+
+        document.getElementById("host-tile").addEventListener('click', () => {
+            showView('host-loading-view');
+            fetch("/state/scanning");
+        });
+
+        document.getElementById('guest-tile').addEventListener('click', () => {
+            showView('guest-input-view');
+            document.getElementById("invite-code-input").value = "";
+            document.getElementById("input-hint").innerText = "没有邀请码？请创建房间。";
+            document.getElementById("input-hint").style = "";
+        });
+
+        document.getElementById("join-button").addEventListener("click", () => {
+            showView("guest-loading-view");
+            fetch("/state/guesting?room=" + document.getElementById('invite-code-input').value).then(r => {
+                if (r.status == 400) {
+                    showView('guest-input-view');
+                    document.getElementById("input-hint").innerText = "邀请码格式错误";
+                    document.getElementById("input-hint").style = "color: orange; font-weight: bold;";
+                }
+            });
+        });
+    </script>
+</body>
+</html>
