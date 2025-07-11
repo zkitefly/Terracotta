@@ -1,13 +1,15 @@
 use std::{
     env, fs,
     io::{BufRead, BufReader, Cursor, Error, ErrorKind},
-    os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{self, Command, Stdio},
     thread,
 };
 
-static EASYTIER_ARCHIVE: (&'static str, &'static [u8]) = ("easytier-core.exe", include_bytes!("../.easytier/windows-x86_64.7z"));
+static EASYTIER_ARCHIVE: (&'static str, &'static [u8]) = (
+    include_str!("../.easytier/entry-conf.v1.txt"), 
+    include_bytes!("../.easytier/easytier.7z")
+);
 
 pub struct EasytierFactory {
     exe: PathBuf,
@@ -49,7 +51,6 @@ impl EasytierFactory {
         logging!("Easytier", "Starting easytier: {:?}", args);
 
         let mut process: process::Child = Command::new(self.exe.as_path())
-            .creation_flags(0x00000200)
             .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
