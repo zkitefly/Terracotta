@@ -11,9 +11,15 @@ macro_rules! logging {
 
 #[macro_use]
 extern crate rocket;
+use interprocess::local_socket as pipe;
+use interprocess::local_socket::{
+    ToNsName,
+    traits::{ListenerExt, Stream},
+};
 use lazy_static::lazy_static;
 
 use std::{
+    io::{Read, Write},
     sync::{
         Mutex,
         mpsc::{self, Receiver, Sender},
@@ -37,7 +43,7 @@ use easytier::Easytier;
 pub mod code;
 use code::Room;
 
-static WEB_STATIC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/__webstatics.7z"));
+static WEB_STATIC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/webstatics.7z"));
 
 enum AppState {
     Waiting {
@@ -54,7 +60,7 @@ enum AppState {
     Guesting {
         _easytier: Easytier,
         _entry: FakeServer,
-        room: Room,
+        _room: Room,
     },
 }
 
@@ -105,9 +111,9 @@ fn get_state() -> Json<serde_json::Value> {
             "state": "hosting",
             "room": room.code
         })),
-        AppState::Guesting { room, .. } => Json(serde_json::json!({
+        AppState::Guesting { .. } => Json(serde_json::json!({
             "state": "guesting",
-            "url": ["127.0.0.1:35781", format!("10.144.144.1:{}", room.port)]
+            "url": format!("127.0.0.1:{}", code::LOCAL_PORT)
         })),
     };
 }
@@ -130,9 +136,7 @@ fn set_state_scanning() -> Status {
     let mut state = access_state();
     *state = AppState::Scanning {
         begin: Instant::now(),
-        scanner: scanning::create(|motd| {
-            !motd.eq("§6§lTerracotta | 陶瓦 联机大厅（请关闭代理软件 否则无法进服）")
-        }),
+        scanner: scanning::create(|motd| motd != code::MOTD),
     };
     return Status::Ok;
 }
@@ -149,16 +153,12 @@ fn set_state_guesting(room: Option<String>) -> Status {
         );
 
         let mut state = access_state();
+        let (easytier, entry) = room.start();
+
         *state = AppState::Guesting {
-            _easytier: room.start(),
-            _entry: {
-                let s = fakeserver::create(
-                    "§6§lTerracotta | 陶瓦 联机大厅（请关闭代理软件 否则无法进服）".to_string(),
-                );
-                s.set_port(room.port);
-                s
-            },
-            room: room,
+            _easytier: easytier,
+            _entry: entry.unwrap(),
+            _room: room,
         };
         return Status::Ok;
     }
@@ -168,14 +168,29 @@ fn set_state_guesting(room: Option<String>) -> Status {
 
 #[rocket::main]
 async fn main() {
-    let holder = single_instance::SingleInstance::new("terracotta-rs-easytier").unwrap();
-    if !holder.is_single() {
-        let _ = open::that("http://127.0.0.1:8000/");
-        return;
-    }
+    let socket = "terracotta-rs.sock"
+        .to_ns_name::<pipe::GenericNamespaced>()
+        .unwrap();
+    match pipe::ListenerOptions::new()
+        .name(socket.clone())
+        .create_sync()
+    {
+        Ok(socket) => main_server(socket).await,
+        Err(_) => main_client(pipe::Stream::connect(socket).unwrap()).await,
+    };
+}
+
+async fn main_client(mut socket: pipe::Stream) {
+    socket.write(&[1]).unwrap();
+}
+
+async fn main_server(socket: pipe::Listener) {
+    let (tx1, rx): (Sender<()>, Receiver<()>) = mpsc::channel();
+    let tx2 = tx1.clone();
 
     let rocket = rocket::custom(rocket::Config {
         log_level: rocket::log::LogLevel::Critical,
+        port: 0,
         ..rocket::Config::default()
     })
     .mount(
@@ -188,10 +203,31 @@ async fn main() {
             set_state_guesting
         ],
     )
-    .attach(AdHoc::on_liftoff("Open Browser", |_| {
-        Box::pin(async {
-            let _ = open::that("http://127.0.0.1:8000/");
+    .attach(AdHoc::on_liftoff("Open Browser", move |rocket| {
+        Box::pin(async move {
+            let port = rocket.config().port;
+
+            let _ = open::that(format!("http://127.0.0.1:{}/", port));
             let _unused = access_state();
+            let _ = tx2.send(());
+
+            std::thread::spawn(move || {
+                for conn in socket.incoming() {
+                    if let Ok(conn) = conn {
+                        let mut buf: [u8; 1024] = [0; 1024];
+                        if let Ok(size) = std::io::BufReader::new(conn).read(&mut buf)
+                            && size >= 1
+                        {
+                            match buf[0] {
+                                1 => {
+                                    let _ = open::that(format!("http://127.0.0.1:{}/", port));
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            });
         })
     }))
     .ignite()
@@ -199,8 +235,9 @@ async fn main() {
     .unwrap();
 
     let shutdown = rocket.shutdown();
-    let (tx, rx): (Sender<()>, Receiver<()>) = mpsc::channel();
     std::thread::spawn(move || {
+        rx.recv().unwrap();
+
         loop {
             if let Ok(_) = rx.recv_timeout(Duration::from_millis(200)) {
                 return;
@@ -209,7 +246,9 @@ async fn main() {
             let mut state = GLOBAL_STATE.lock().unwrap();
             match &*state {
                 AppState::Waiting { begin } => {
-                    if Instant::now().duration_since(*begin).as_millis() >= if cfg!(debug_assertions) {5000} else {10000} {
+                    if Instant::now().duration_since(*begin).as_millis()
+                        >= if cfg!(debug_assertions) { 5000 } else { 10000 }
+                    {
                         logging!("UI", "Server has been in IDE state for 10s. Shutting down.");
                         shutdown.notify();
                         return;
@@ -236,7 +275,7 @@ async fn main() {
                         );
 
                         *state = AppState::Hosting {
-                            _easytier: room.start(),
+                            _easytier: room.start().0,
                             room: room,
                         };
                     }
@@ -250,64 +289,5 @@ async fn main() {
     });
 
     let _ = rocket.launch().await;
-    let _ = tx.send(());
+    let _ = tx1.send(());
 }
-
-// fn main() {
-//     let args: Vec<String> = std::env::args().collect();
-//     logging!("UI", "Program Arguments: {:?}", args);
-
-//     match args.len() {
-//         2 if args[1] == "--host" => {
-//             logging!("UI", "Scanning servers.");
-//             let scanning: Scanning = scanning::create();
-
-//             let port = loop {
-//                 let ports = scanning.get_port();
-//                 if let Some(port) = ports.get(0) {
-//                     break *port;
-//                 }
-//             };
-
-//             let room = Room::create(port);
-//             let factory: EasytierFactory = easytier::create_factory().unwrap();
-//             let easytier: Easytier = room.start(factory);
-
-//             logging!("UI", "Room has started. Code={:?}", room.code);
-//             let mut string = String::from("");
-//             let _ = stdin().read_line(&mut string);
-
-//             easytier.kill();
-//         }
-//         3 if args[1] == "--guest" => {
-//             let code = Room::from(&args[2]);
-//             match code {
-//                 Ok(room) => {
-//                     logging!("UI", "Joining room. {:#?}", room);
-
-//                     let factory: EasytierFactory = easytier::create_factory().unwrap();
-//                     let easytier: Easytier = room.start(factory);
-//                     let server: FakeServer = fakeserver::create(String::from(
-//                         "§6§lTerracotta | 陶瓦 联机大厅（请关闭代理软件 否则无法进服）",
-//                     ));
-//                     server.set_port(room.port);
-
-//                     logging!("UI", "Room has started. Code={:?}", room.code);
-
-//                     let mut string = String::from("");
-//                     let _ = stdin().read_line(&mut string);
-
-//                     easytier.kill();
-//                 }
-//                 Err(reason) => {
-//                     panic!("Cannot parse room: {}", reason);
-//                 }
-//             }
-//         }
-//         _ => {
-//             println!("Terracotta Usage");
-//             println!("--host: Automatically detect the local server and start a room.");
-//             println!("--guest <room code>: Join the room.");
-//         }
-//     }
-// }

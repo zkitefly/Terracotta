@@ -3,7 +3,10 @@ use core::panic;
 use num_bigint::BigUint;
 use rand_core::{OsRng, TryRngCore};
 
-use crate::easytier::{create_factory, Easytier, EasytierFactory};
+use crate::{
+    easytier::{Easytier, EasytierFactory, create_factory},
+    fakeserver::{self, FakeServer},
+};
 
 #[derive(Debug)]
 pub struct Room {
@@ -13,6 +16,9 @@ pub struct Room {
     pub port: u16,
     pub host: bool,
 }
+
+pub const MOTD: &'static str = "§6§lTerracotta | 陶瓦 联机大厅（请关闭代理软件 否则无法进服）";
+pub const LOCAL_PORT: u16 = 35781;
 
 static CHARS: &[u8] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ".as_bytes();
 
@@ -102,13 +108,11 @@ impl Room {
                     if let Some(char) = lookup_char(chars[start + i * 6 + j]) {
                         array[i * 5 + j] = char;
                     } else {
-                        println!("C1: chars[{} + {} * 6 + {}] = {}", start, i, j, chars[start + i * 6 + j]);
                         continue 'moving;
                     }
                 }
 
                 if i != 4 && chars[start + i * 6 + 5] != '-' {
-                    println!("C2: chars[{} + {} * 6 + 5] = {}", start, i, chars[start + i * 6 + 5]);
                     continue 'moving;
                 }
             }
@@ -162,7 +166,7 @@ impl Room {
         return Err("No Room code found.".to_string());
     }
 
-    pub fn start(&self) -> Easytier {
+    pub fn start(&self) -> (Easytier, Option<FakeServer>) {
         lazy_static::lazy_static! {
             static ref factory: EasytierFactory = create_factory().unwrap();
         }
@@ -177,6 +181,7 @@ impl Room {
             String::from_utf8_lossy(&self.secret).to_ascii_lowercase(),
             "-p".to_string(),
             "tcp://public.easytier.cn:11010".to_string(),
+            "--no-tun".to_string(),
         ];
 
         args.append(
@@ -186,17 +191,26 @@ impl Room {
                 vec![
                     "-d".to_string(),
                     format!(
-                        "--port-forward=tcp://0.0.0.0:35781/10.144.144.1:{}",
-                        self.port
+                        "--port-forward=tcp://0.0.0.0:{}/10.144.144.1:{}",
+                        LOCAL_PORT, self.port
                     ),
                     format!(
-                        "--port-forward=tcp://[::0]:35781/10.144.144.1:{}",
-                        self.port
+                        "--port-forward=tcp://[::0]:{}/10.144.144.1:{}",
+                        LOCAL_PORT, self.port
                     ),
                 ]
             }),
         );
 
-        return factory.create(args);
+        return (
+            factory.create(args),
+            if self.host {
+                None
+            } else {
+                let s = fakeserver::create(MOTD.to_string());
+                s.set_port(LOCAL_PORT);
+                Some(s)
+            },
+        );
     }
 }

@@ -645,7 +645,7 @@
                     <div class="result-icon">🎮</div>
                     <h2 class="result-title">成功加入房间</h2>
                     <p class="result-description">现在可以进入多人游戏了！</p>
-                    <p class="result-description">备用联机地址：<span id="guest-backup-address">*</span></p>
+                    <p class="result-description">备用联机地址：<span id="guest-backup-address" style="user-select: all">*</span></p>
                     <button class="action-button back-button" id="guest-result-back-button">
                         <i class="fas fa-home"></i>
                         返回主页
@@ -680,7 +680,7 @@
                     }
                 } else if (r.state == "guesting") {
                     showView("guest-result-view");
-                    document.getElementById("guest-backup-address").innerText = r.url.join(" 或 ")
+                    document.getElementById("guest-backup-address").innerText = r.url
                 }
             }), 500);
         }

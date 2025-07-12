@@ -25,7 +25,7 @@ pub fn create(filter: fn(&str) -> bool) -> Scanning {
         match result {
             Ok(_) => {}
             Err(err) => {
-                println!("Cannot run Scanning: {}", err);
+                logging!("Server Scanner", "Cannot scan: {}", err);
             }
         }
     });
