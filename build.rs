@@ -111,18 +111,20 @@ fn download_easytier() {
         panic!("Unsupported target_os: {}", std::env::consts::OS);
     };
 
-    println!("cargo::rustc-env=TERRACOTTA_ET={}", conf.desc);
     let base = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap()).join(".easytier").join(conf.desc);
     let entry_conf = base.clone().join("entry-conf.v1.txt");
     let entry_archive = base.clone().join("easytier.7z");
+    println!("cargo::rustc-env=TERRACOTTA_ET_ENTRY_CONF={}", entry_conf.as_path().to_str().unwrap().to_string());
+    println!("cargo::rustc-env=TERRACOTTA_ET_ARCHIVE={}", entry_archive.as_path().to_str().unwrap().to_string());
 
     if fs::metadata(entry_conf.clone()).is_ok() {
         return;
     }
 
-    if !fs::metadata(base.clone()).is_ok() {
-        fs::create_dir_all(base.clone()).unwrap();
+    if fs::metadata(base.clone()).is_ok() {
+        fs::remove_dir_all(base.clone()).unwrap();
     }
+    fs::create_dir_all(base.clone()).unwrap();
 
     let source =
         Path::new(&env::temp_dir()).join(format!("terracotta-build-rs-{}.zip", process::id()));
@@ -138,7 +140,7 @@ fn download_easytier() {
     }
 
     let mut archive = zip::ZipArchive::new(fs::File::open(source.clone()).unwrap()).unwrap();
-    let target: std::path::PathBuf = base.clone().join("easytier.7z.tmp");
+    let target= base.clone().join("easytier.7z.tmp");
     let mut writer =
         sevenz_rust2::ArchiveWriter::new(fs::File::create(target.clone()).unwrap()).unwrap();
 
@@ -162,6 +164,9 @@ fn download_easytier() {
     }
 
     writer.finish().unwrap();
-    fs::rename(target, entry_archive).unwrap();
+    let r = fs::rename(target.clone(), entry_archive.clone());
+    if !fs::metadata(entry_archive.clone()).is_ok() {
+        r.unwrap();
+    }
     fs::write(entry_conf, conf.entry).unwrap();
 }
