@@ -7,8 +7,8 @@ use std::{
 };
 
 static EASYTIER_ARCHIVE: (&'static str, &'static [u8]) = (
-    include_str!(concat!("../.easytier/", env!("TERRACOTTA_ET"), "/entry-conf.v1.txt")), 
-    include_bytes!(concat!("../.easytier/", env!("TERRACOTTA_ET"), "/easytier.7z"))
+    include_str!(env!("TERRACOTTA_ET_ENTRY_CONF")), 
+    include_bytes!(env!("TERRACOTTA_ET_ARCHIVE"))
 );
 
 pub struct EasytierFactory {
