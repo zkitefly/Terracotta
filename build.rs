@@ -104,6 +104,13 @@ fn download_easytier() {
                 entry: "easytier-core",
                 desc: "linux-x86_64"
             }
+        } else if cfg!(target_arch = "aarch64") {
+            EasytierFiles {
+                url: "https://github.com/EasyTier/EasyTier/releases/download/v2.3.2/easytier-linux-aarch64-v2.3.2.zip",
+                files: vec!["easytier-linux-aarch64/easytier-core"],
+                entry: "easytier-core",
+                desc: "linux-arm64"
+            }
         } else {
             panic!("Unsupported target_arch: {}", std::env::consts::ARCH);
         }
