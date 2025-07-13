@@ -18,6 +18,7 @@ use interprocess::local_socket::{
 };
 use lazy_static::lazy_static;
 
+use std::{env, process};
 use std::{
     io::{Read, Write},
     sync::{
@@ -44,6 +45,13 @@ pub mod code;
 use code::Room;
 
 static WEB_STATIC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/webstatics.7z"));
+
+lazy_static! {
+    static ref LOGGING_FILE: std::path::PathBuf = std::path::Path::join(
+        &env::temp_dir(),
+        format!("terracotta-rs-logging-{}.log", process::id()),
+    );
+}
 
 enum AppState {
     Waiting {
@@ -174,6 +182,11 @@ fn set_state_guesting(room: Option<String>) -> Status {
     return Status::BadRequest;
 }
 
+#[get("/log")]
+fn download_log() -> std::fs::File {
+    return std::fs::File::open((*LOGGING_FILE).clone()).unwrap();
+}
+
 #[rocket::main]
 async fn main() {
     let socket = "terracotta-rs.sock"
@@ -193,6 +206,27 @@ async fn main_client(mut socket: pipe::Stream) {
 }
 
 async fn main_server(socket: pipe::Listener) {
+    let logging_file = std::fs::File::create((*LOGGING_FILE).clone()).unwrap();
+    if cfg!(not(debug_assertions)) {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            use std::os::unix::io::AsRawFd;
+            unsafe {
+                libc::dup2(logging_file.as_raw_fd(), libc::STDOUT_FILENO);
+            }
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::io::AsRawHandle;
+            unsafe {
+                let _ = winapi::um::processenv::SetStdHandle(
+                    winapi::um::winbase::STD_OUTPUT_HANDLE,
+                    logging_file.as_raw_handle() as _,
+                );
+            }
+        }
+    }
+
     let (tx1, rx): (Sender<()>, Receiver<()>) = mpsc::channel();
     let tx2: Sender<()> = tx1.clone();
 
@@ -208,7 +242,8 @@ async fn main_server(socket: pipe::Listener) {
             get_state,
             set_state_ide,
             set_state_scanning,
-            set_state_guesting
+            set_state_guesting,
+            download_log
         ],
     )
     .attach(AdHoc::on_liftoff("Open Browser", move |rocket| {

@@ -545,8 +545,8 @@
 <body>
     <div class="container">
         <header>
-            <h1 style="font-weight: bold;">Terracotta | 陶瓦</h1>
-            <!-- <div class="subtitle">基于 EasyTier 的 Minecraft 联机助手</div> -->
+            <h1 style="font-weight: bold;" id="title">Terracotta | 陶瓦</h1>
+            <div class="subtitle">基于 EasyTier 的 Minecraft 联机助手</div>
         </header>
 
         <div class="view-container">
@@ -660,6 +660,27 @@
         <p>Terracotta | 陶瓦 - 让 Minecraft 联机更简单</p>
     </footer>
     <script>
+        document.getElementById("title").addEventListener("click", (function () {
+            let previous = 0;
+
+            return ev => {
+                if (ev.button == 0 && ev.shiftKey) {
+                    if (performance.now() - previous > 1000) {
+                        previous = performance.now();
+                    } else {
+                        previous = 0;
+
+                        let a = document.createElement("a");
+                        a.href = "/log";
+                        a.download = "terracotta.log";
+                        a.click();
+
+                        alert("日志已导出。");
+                    }
+                }
+            };
+        }()));
+
         const showView = viewID => {
             document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
             document.getElementById(viewID).classList.add('active');

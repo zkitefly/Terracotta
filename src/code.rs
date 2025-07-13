@@ -17,7 +17,7 @@ pub struct Room {
     pub host: bool,
 }
 
-pub const MOTD: &'static str = "§6§lTerracotta | 陶瓦 联机大厅（请关闭代理软件 否则无法进服）";
+pub const MOTD: &'static str = "§6§l陶瓦联机大厅（请保持陶瓦运行并关闭其他代理软件）";
 pub const LOCAL_PORT: u16 = 35781;
 
 static CHARS: &[u8] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ".as_bytes();

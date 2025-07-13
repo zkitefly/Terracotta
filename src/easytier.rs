@@ -35,7 +35,7 @@ pub fn create_factory() -> Result<EasytierFactory, Error> {
         .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
 
     let exe: PathBuf = Path::join(&dir, EASYTIER_ARCHIVE.0);
-    #[cfg(unix)] {
+    #[cfg(any(target_os = "linux", target_os = "macos"))] {
         use std::os::unix::fs::PermissionsExt;
         let mut permissions = fs::metadata(exe.clone()).unwrap().permissions();
         permissions.set_mode(permissions.mode() | 0o100);
