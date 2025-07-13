@@ -54,25 +54,28 @@ enum AppState {
         scanner: Scanning,
     },
     Hosting {
-        _easytier: Easytier,
+        easytier: Easytier,
         room: Room,
     },
     Guesting {
-        _easytier: Easytier,
+        easytier: Easytier,
         _entry: FakeServer,
         _room: Room,
     },
 }
 
 lazy_static! {
-    static ref GLOBAL_STATE: Mutex<AppState> = Mutex::new(AppState::Waiting {
-        begin: Instant::now(),
-    });
+    static ref GLOBAL_STATE: Mutex<(u32, AppState)> = Mutex::new((
+        0,
+        AppState::Waiting {
+            begin: Instant::now(),
+        }
+    ));
 }
 
-fn access_state() -> std::sync::MutexGuard<'static, AppState> {
+fn access_state() -> std::sync::MutexGuard<'static, (u32, AppState)> {
     let mut guard = GLOBAL_STATE.lock().unwrap();
-    match &mut *guard {
+    match &mut (*guard).1 {
         AppState::Waiting { begin } => {
             *begin = Instant::now();
         }
@@ -104,15 +107,18 @@ fn index() -> Result<RawHtml<&'static str>, Status> {
 
 #[get("/state")]
 fn get_state() -> Json<serde_json::Value> {
-    return match &*access_state() {
-        AppState::Waiting { .. } => Json(serde_json::json!({"state": "waiting"})),
-        AppState::Scanning { .. } => Json(serde_json::json!({"state": "scanning"})),
+    let v = &mut *access_state();
+    return match &v.1 {
+        AppState::Waiting { .. } => Json(serde_json::json!({"state": "waiting", "index": v.0})),
+        AppState::Scanning { .. } => Json(serde_json::json!({"state": "scanning", "index": v.0})),
         AppState::Hosting { room, .. } => Json(serde_json::json!({
             "state": "hosting",
+            "index": v.0,
             "room": room.code
         })),
         AppState::Guesting { .. } => Json(serde_json::json!({
             "state": "guesting",
+            "index": v.0,
             "url": format!("127.0.0.1:{}", code::LOCAL_PORT)
         })),
     };
@@ -122,8 +128,9 @@ fn get_state() -> Json<serde_json::Value> {
 fn set_state_ide() -> Status {
     logging!("UI", "Setting Server to state IDE.");
 
-    let mut state = access_state();
-    *state = AppState::Waiting {
+    let state = &mut *access_state();
+    state.0 += 1;
+    state.1 = AppState::Waiting {
         begin: Instant::now(),
     };
     return Status::Ok;
@@ -133,8 +140,9 @@ fn set_state_ide() -> Status {
 fn set_state_scanning() -> Status {
     logging!("UI", "Setting Server to state SCANNING.");
 
-    let mut state = access_state();
-    *state = AppState::Scanning {
+    let state = &mut *access_state();
+    state.0 += 1;
+    state.1 = AppState::Scanning {
         begin: Instant::now(),
         scanner: scanning::create(|motd| motd != code::MOTD),
     };
@@ -152,11 +160,11 @@ fn set_state_guesting(room: Option<String>) -> Status {
             room.code
         );
 
-        let mut state = access_state();
+        let state = &mut *access_state();
+        state.0 += 1;
         let (easytier, entry) = room.start();
-
-        *state = AppState::Guesting {
-            _easytier: easytier,
+        state.1 = AppState::Guesting {
+            easytier: easytier,
             _entry: entry.unwrap(),
             _room: room,
         };
@@ -186,7 +194,7 @@ async fn main_client(mut socket: pipe::Stream) {
 
 async fn main_server(socket: pipe::Listener) {
     let (tx1, rx): (Sender<()>, Receiver<()>) = mpsc::channel();
-    let tx2 = tx1.clone();
+    let tx2: Sender<()> = tx1.clone();
 
     let rocket = rocket::custom(rocket::Config {
         log_level: rocket::log::LogLevel::Critical,
@@ -234,32 +242,40 @@ async fn main_server(socket: pipe::Listener) {
     .await
     .unwrap();
 
-    let shutdown = rocket.shutdown();
+    let shutdown: rocket::Shutdown = rocket.shutdown();
     std::thread::spawn(move || {
         rx.recv().unwrap();
 
         loop {
+            fn handle_offline(time: &Instant) -> bool {
+                const TIMEOUT: u128 = if cfg!(debug_assertions) { 3000 } else { 10000 };
+
+                let timeout = Instant::now().duration_since(*time).as_millis();
+                if timeout >= TIMEOUT {
+                    logging!(
+                        "UI",
+                        "Server has been in IDE state for {}s. Shutting down.",
+                        TIMEOUT / 1000
+                    );
+                    return true;
+                }
+                return false;
+            }
+
             if let Ok(_) = rx.recv_timeout(Duration::from_millis(200)) {
                 return;
             }
 
-            let mut state = GLOBAL_STATE.lock().unwrap();
-            match &*state {
+            let state = &mut *GLOBAL_STATE.lock().unwrap();
+            match &mut state.1 {
                 AppState::Waiting { begin } => {
-                    if Instant::now().duration_since(*begin).as_millis()
-                        >= if cfg!(debug_assertions) { 5000 } else { 10000 }
-                    {
-                        logging!("UI", "Server has been in IDE state for 10s. Shutting down.");
+                    if handle_offline(begin) {
                         shutdown.notify();
                         return;
                     }
                 }
                 AppState::Scanning { begin, scanner } => {
-                    if Instant::now().duration_since(*begin).as_millis() >= 10000 {
-                        logging!(
-                            "UI",
-                            "Server has been in SCANNING state for 10s. Shutting down."
-                        );
+                    if handle_offline(begin) {
                         shutdown.notify();
                         return;
                     }
@@ -274,14 +290,31 @@ async fn main_server(socket: pipe::Listener) {
                             room.code
                         );
 
-                        *state = AppState::Hosting {
-                            _easytier: room.start().0,
+                        state.0 += 1;
+                        state.1 = AppState::Hosting {
+                            easytier: room.start().0,
                             room: room,
                         };
                     }
                 }
-                AppState::Hosting { .. } => {}
-                AppState::Guesting { .. } => {}
+                AppState::Hosting { easytier, .. } => {
+                    if !easytier.is_alive() {
+                        logging!("UI", "Easytier has been dead.");
+                        state.0 += 1;
+                        state.1 = AppState::Waiting {
+                            begin: Instant::now(),
+                        };
+                    }
+                }
+                AppState::Guesting { easytier, .. } => {
+                    if !easytier.is_alive() {
+                        logging!("UI", "Easytier has been dead.");
+                        state.0 += 1;
+                        state.1 = AppState::Waiting {
+                            begin: Instant::now(),
+                        };
+                    }
+                }
             };
 
             thread::sleep(Duration::from_millis(200));

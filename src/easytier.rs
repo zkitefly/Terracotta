@@ -92,6 +92,18 @@ impl Easytier {
     pub fn kill(mut self) {
         let _ = self.process.kill();
     }
+
+    pub fn is_alive(&mut self) -> bool {
+        if let Ok(value) = self.process.try_wait() {
+            if let Some(_) = value {
+                return false;
+            } else {
+                return true;
+            }
+        } else {
+            return false;
+        }
+    }
 }
 
 impl Drop for Easytier {

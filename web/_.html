@@ -667,11 +667,15 @@
 
         let state = { "state": "waiting" };
         if (new URL(location.href).protocol != "file:") {
-            let counter = 0;
+            let failCounter = 0, index = -1;
 
             setInterval(() => {
                 fetch("/state").then(r => r.json()).then(r => {
-                    counter = 0;
+                    failCounter = 0;
+                    if (r.index <= index) {
+                        return;
+                    }
+                    index = r.index;
 
                     if (r.state == "waiting") {
                         if (["main-view", "guest-input-view"].indexOf(document.getElementsByClassName("active")[0].id) == -1) {
@@ -689,8 +693,8 @@
                         document.getElementById("guest-backup-address").innerText = r.url
                     }
                 }).catch(() => {
-                    counter += 1;
-                    if (counter == 5) {
+                    failCounter += 1;
+                    if (failCounter == 3) {
                         alert("Terracotta | 陶瓦主程序已崩溃，请向开发者报告该错误");
                     }
                 });

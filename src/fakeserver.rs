@@ -1,6 +1,5 @@
 use std::io::Result;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
-use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
@@ -20,7 +19,7 @@ pub fn create(motd: String) -> FakeServer {
         match result {
             Ok(_) => {}
             Err(err) => {
-                panic!("{}", err);
+                logging!("FakeServer", "Cannot launch Fake Server: {}", err);
             }
         }
     });
@@ -30,54 +29,71 @@ pub fn create(motd: String) -> FakeServer {
 
 fn run(motd: String, signal: Receiver<u32>) -> Result<()> {
     lazy_static::lazy_static! {
-        static ref ADDRESSES: (Ipv4Addr, Ipv6Addr) = {
-            let mut v4 = Ipv4Addr::UNSPECIFIED;
-            let mut v6 = Ipv6Addr::UNSPECIFIED;
-            for (_, ip) in local_ip_address::list_afinet_netifas().unwrap().iter() {
-                match ip {
-                    IpAddr::V4(ip) => {
-                        let parts = ip.octets();
-                        if !(parts[0] == 10 && parts[1] == 144 && parts[2] == 144) && *ip != Ipv4Addr::LOCALHOST && *ip != Ipv4Addr::UNSPECIFIED {
-                            v4 = ip.clone();
+        static ref ADDRESSES: Vec<IpAddr> = {
+            let mut addresses: Vec<IpAddr> = vec![];
+
+            if let Ok(networks) = local_ip_address::list_afinet_netifas() {
+                for (_, address) in networks.into_iter() {
+                    match address {
+                        IpAddr::V4(ip) => {
+                            let parts = ip.octets();
+                            if !(parts[0] == 10 && parts[1] == 144 && parts[2] == 144) && ip != Ipv4Addr::LOCALHOST && ip != Ipv4Addr::UNSPECIFIED {
+                                addresses.push(address);
+                            }
+                        },
+                        IpAddr::V6(ip) => {
+                            if ip != Ipv6Addr::LOCALHOST && ip != Ipv6Addr::UNSPECIFIED {
+                                addresses.push(address);
+                            }
                         }
-                    },
-                    IpAddr::V6(ip) => {
-                        if *ip != Ipv6Addr::LOCALHOST && *ip != Ipv6Addr::UNSPECIFIED {
-                            v6 = ip.clone();
-                        }
-                    }
-                };
+                    };
+                }
             }
 
-            logging!("Fake Server", "Local IP: v4={}, v6={}", v4, v6);
-            (v4, v6)
+            if addresses.len() == 0 {
+                addresses.push(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+                addresses.push(IpAddr::V6(Ipv6Addr::UNSPECIFIED));
+            }
+
+            logging!("Fake Server", "Local IP Addresses: {:?}", addresses);
+            addresses
         };
     }
 
-    let sockets: [(UdpSocket, SocketAddr); 2] = [
-        {
-            let socket = UdpSocket::bind((ADDRESSES.0, 0))?;
-            socket.set_broadcast(true)?;
-            socket.set_multicast_ttl_v4(4)?;
-            socket.set_multicast_loop_v4(true)?;
+    let sockets: Vec<(UdpSocket, &'static SocketAddr)> = ADDRESSES
+        .iter()
+        .map(|address| {
+            let socket = UdpSocket::bind((address.clone(), 0))?;
+            let ip: &SocketAddr = match address {
+                IpAddr::V4(_) => {
+                    socket.set_broadcast(true)?;
+                    socket.set_multicast_ttl_v4(4)?;
+                    socket.set_multicast_loop_v4(true)?;
 
-            (
-                socket,
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::from_str("224.0.2.60").unwrap()), 4445),
-            )
-        },
-        {
-            let socket = UdpSocket::bind((ADDRESSES.1, 0))?;
-            socket.set_multicast_loop_v6(true)?;
-            (
-                socket,
-                SocketAddr::new(
-                    IpAddr::V6(Ipv6Addr::from_str("FF75:230::60").unwrap()),
-                    4445,
-                ),
-            )
-        },
-    ];
+                    lazy_static::lazy_static! {
+                        static ref ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(224, 0, 2, 60)), 4445);
+                    }
+
+                    &*ADDR
+                }
+                IpAddr::V6(_) => {
+                    socket.set_multicast_loop_v6(true)?;
+
+                    lazy_static::lazy_static! {
+                        static ref ADDR: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0xFF75, 0x230, 0, 0, 0, 0, 0, 0x60)), 4445);
+                    }
+
+                    &*ADDR
+                }
+            };
+
+            return Ok((socket, ip));
+        })
+        .filter_map(|r: Result<(UdpSocket, &SocketAddr)>| match r {
+            Ok(value) => Some(value), 
+            Err(_) => None
+        })
+        .collect();
 
     let mut message: String = "".to_owned();
     let mut message_bytes = message.as_bytes();
@@ -87,7 +103,7 @@ fn run(motd: String, signal: Receiver<u32>) -> Result<()> {
             match value {
                 1..=65536 => {
                     logging!(
-                        "Server Faking",
+                        "Fake Server",
                         "Faking server with PORT={}, MOTD={}",
                         value as u16,
                         motd
@@ -96,11 +112,11 @@ fn run(motd: String, signal: Receiver<u32>) -> Result<()> {
                     message_bytes = message.as_bytes();
                 }
                 SIG_TERMINAL => {
-                    logging!("Server Faking", "Stopped");
+                    logging!("Fake Server", "Stopped");
                     return Ok(());
                 }
                 SIG_PARSE => {
-                    logging!("Server Faking", "Paused");
+                    logging!("Fake Server", "Paused");
                     message = "".to_owned();
                     message_bytes = message.as_bytes();
                 }
