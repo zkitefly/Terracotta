@@ -204,6 +204,7 @@ impl Room {
                 "--compression=zstd",
                 "--multi-thread",
                 "--latency-first",
+                "--enable-kcp-proxy",
             ]);
         }
 
