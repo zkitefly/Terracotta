@@ -4,7 +4,7 @@ use num_bigint::BigUint;
 use rand_core::{OsRng, TryRngCore};
 
 use crate::{
-    easytier::{Easytier, EasytierFactory, create_factory},
+    easytier::{Easytier, self},
     fakeserver::{self, FakeServer},
 };
 
@@ -168,10 +168,6 @@ impl Room {
 
     pub fn start(&self) -> (Easytier, Option<FakeServer>) {
         lazy_static::lazy_static! {
-            static ref factory: EasytierFactory = create_factory().unwrap();
-        }
-
-        lazy_static::lazy_static! {
             static ref configs: (Vec<&'static str>, Vec<&'static str>) = (vec![
                 "tcp://public.easytier.top:11010",
                 "tcp://8.138.6.53:11010",
@@ -245,7 +241,7 @@ impl Room {
         );
 
         return (
-            factory.create(args),
+            easytier::FACTORY.create(args),
             if self.host {
                 None
             } else {

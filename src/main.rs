@@ -13,7 +13,7 @@ macro_rules! logging {
 extern crate rocket;
 use lazy_static::lazy_static;
 
-use std::{env, process, sync::mpsc, thread::spawn, fs};
+use std::{env, fs, process, sync::mpsc, thread::spawn};
 
 pub mod code;
 pub mod easytier;
@@ -21,13 +21,13 @@ pub mod fakeserver;
 pub mod scanning;
 pub mod server;
 
-#[cfg(target_family="windows")]
+#[cfg(target_family = "windows")]
 pub mod lock_windows;
-#[cfg(target_family="windows")]
+#[cfg(target_family = "windows")]
 use lock_windows::State as lock;
-#[cfg(target_family="unix")]
+#[cfg(target_family = "unix")]
 pub mod lock_unix;
-#[cfg(target_family="unix")]
+#[cfg(target_family = "unix")]
 use lock_unix::State as lock;
 
 lazy_static! {
@@ -64,7 +64,10 @@ async fn main() {
             let _ = open::that(format!("http://127.0.0.1:{}/", port));
         }
         lock::Unknown => {
-            logging!("UI", "Cannot determin application mode. Fallback to server mode.");
+            logging!(
+                "UI",
+                "Cannot determin application mode. Fallback to server mode."
+            );
 
             let (tx, _) = mpsc::channel::<u16>();
             main_server(tx).await;
@@ -75,12 +78,16 @@ async fn main() {
 async fn main_server(port: mpsc::Sender<u16>) {
     redirect_std(&*LOGGING_FILE);
 
-    server::server_main(port).await;
+    let future = server::server_main(port);
+    let _ = Box::new(&*easytier::FACTORY);
+    future.await;
 }
 
 fn redirect_std(file: &std::path::PathBuf) {
-    logging!("UI", "Logs will be saved to {}. There will be not information on the console.", file.to_str().unwrap());
-    
+    if cfg!(debug_assertions) {
+        return;
+    }
+
     let Some(parent) = file.parent() else {
         return;
     };
@@ -95,28 +102,32 @@ fn redirect_std(file: &std::path::PathBuf) {
         return;
     };
 
-    if cfg!(not(debug_assertions)) {
-        #[cfg(target_family="unix")]
-        {
-            use std::os::unix::io::AsRawFd;
-            unsafe {
-                libc::dup2(logging_file.as_raw_fd(), libc::STDOUT_FILENO);
-                libc::dup2(logging_file.as_raw_fd(), libc::STDERR_FILENO);
-            }
-        }
-        #[cfg(target_family="windows")]
-        {
-            use std::os::windows::io::AsRawHandle;
-            unsafe {
-                let _ = winapi::um::processenv::SetStdHandle(
-                    winapi::um::winbase::STD_OUTPUT_HANDLE,
-                    logging_file.as_raw_handle() as _,
-                );
-                let _ = winapi::um::processenv::SetStdHandle(
-                    winapi::um::winbase::STD_ERROR_HANDLE,
-                    logging_file.as_raw_handle() as _,
-                );
-            }
+    #[cfg(target_family = "unix")]
+    {
+        use std::os::unix::io::AsRawFd;
+        unsafe {
+            libc::dup2(logging_file.as_raw_fd(), libc::STDOUT_FILENO);
+            libc::dup2(logging_file.as_raw_fd(), libc::STDERR_FILENO);
         }
     }
+    #[cfg(target_family = "windows")]
+    {
+        use std::os::windows::io::AsRawHandle;
+        unsafe {
+            let _ = winapi::um::processenv::SetStdHandle(
+                winapi::um::winbase::STD_OUTPUT_HANDLE,
+                logging_file.as_raw_handle() as _,
+            );
+            let _ = winapi::um::processenv::SetStdHandle(
+                winapi::um::winbase::STD_ERROR_HANDLE,
+                logging_file.as_raw_handle() as _,
+            );
+        }
+    }
+
+    logging!(
+        "UI",
+        "Logs will be saved to {}. There will be not information on the console.",
+        file.to_str().unwrap()
+    );
 }

@@ -11,6 +11,10 @@ static EASYTIER_ARCHIVE: (&'static str, &'static [u8]) = (
     include_bytes!(env!("TERRACOTTA_ET_ARCHIVE"))
 );
 
+lazy_static::lazy_static! {
+    pub static ref FACTORY: EasytierFactory = create();
+}
+
 pub struct EasytierFactory {
     exe: PathBuf,
 }
@@ -19,11 +23,11 @@ pub struct Easytier {
     process: process::Child,
 }
 
-pub fn create_factory() -> Result<EasytierFactory, Error> {
+fn create() -> EasytierFactory {
     let dir = Path::join(&env::temp_dir(), format!("terracotta-rs-{}", process::id()));
 
     let _ = fs::remove_dir_all(dir.clone());
-    fs::create_dir_all(dir.clone())?;
+    let _ = fs::create_dir_all(dir.clone());
 
     logging!(
         "Easytier",
@@ -32,7 +36,8 @@ pub fn create_factory() -> Result<EasytierFactory, Error> {
     );
 
     sevenz_rust2::decompress(Cursor::new(EASYTIER_ARCHIVE.1.to_vec()), dir.clone())
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))?;
+        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
+        .unwrap();
 
     let exe: PathBuf = Path::join(&dir, EASYTIER_ARCHIVE.0);
     #[cfg(target_family="unix")] {
@@ -41,7 +46,7 @@ pub fn create_factory() -> Result<EasytierFactory, Error> {
         permissions.set_mode(permissions.mode() | 0o100);
         fs::set_permissions(exe.clone(), permissions).unwrap();
     }
-    return Ok(EasytierFactory { exe: exe });
+    return EasytierFactory { exe: exe };
 }
 
 impl Drop for EasytierFactory {
