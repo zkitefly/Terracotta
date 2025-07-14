@@ -13,62 +13,99 @@ env:
   CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_AR: aarch64-linux-gnu-ar
   CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-musl-gcc
   CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_AR: aarch64-linux-musl-ar
+  CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_LINKER: "${{github.workspace}}/llvm-mingw/bin/x86_64-w64-mingw32-clang"
+  CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_AR: "${{github.workspace}}/llvm-mingw/bin/x86_64-w64-mingw32-ar"
+  CARGO_TARGET_AARCH64_PC_WINDOWS_GNULLVM_LINKER: "${{github.workspace}}/llvm-mingw/bin/aarch64-w64-mingw32-clang"
+  CARGO_TARGET_AARCH64_PC_WINDOWS_GNULLVM_AR: "${{github.workspace}}/llvm-mingw/bin/aarch64-w64-mingw32-ar"
+  #RUSTFLAGS: "-C target-feature=+crt-static"
+  name: "terracotta"
+  MACOSX_DEPLOYMENT_TARGET: "11.1"
+  RUST_BACKTRACE: "full"
+  targets: >-
+    x86_64-unknown-linux-musl 
+    x86_64-unknown-linux-gnu 
+    x86_64-pc-windows-gnullvm
+    x86_64-pc-windows-gnu
+    x86_64-apple-darwin 
+    aarch64-unknown-linux-musl 
+    aarch64-unknown-linux-gnu 
+    aarch64-pc-windows-gnullvm 
+    aarch64-apple-darwin
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
     name: Build All
-    env:
-      name: "terracotta"
-      MACOSX_DEPLOYMENT_TARGET: "11.1"
-      RUST_BACKTRACE: "full"
-      targets: >-
-        x86_64-unknown-linux-musl 
-        x86_64-unknown-linux-gnu 
-        x86_64-pc-windows-gnullvm 
-        x86_64-apple-darwin 
-        aarch64-unknown-linux-musl 
-        aarch64-unknown-linux-gnu 
-        aarch64-pc-windows-gnullvm 
-        aarch64-apple-darwin
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+    # 安装编译前置
     - name: Install Cross Compiler Toolchains
       run: |
         sudo apt update
-        sudo apt install --yes --no-install-recommends make build-essential clang libclang-dev lld llvm-dev \
+        sudo apt install --yes --no-install-recommends build-essential \
           gcc-x86-64-linux-gnu g++-x86-64-linux-gnu \
           gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu \
-          gcc-mingw-w64-x86-64 mingw-w64-x86-64-dev \
+          gcc-mingw-w64-x86-64 \
           musl-tools musl-dev mingw-w64
         wget -O llvm-mingw.tar.xz https://github.com/mstorsjo/llvm-mingw/releases/download/20250709/llvm-mingw-20250709-ucrt-ubuntu-22.04-x86_64.tar.xz
         tar -xf llvm-mingw.tar.xz -C ${{github.workspace}}
         mv -v ${{github.workspace}}/llvm-mingw-* ${{github.workspace}}/llvm-mingw
-        echo "${{github.workspace}}/llvm-mingw/bin" >> $GITHUB_PATH
+        #echo "${{github.workspace}}/llvm-mingw/bin" >> $GITHUB_PATH
+        mv -v ".github/.cargo" "."
     - name: Install Cross Compliers (General)
       uses: Lesmiscore/musl-cross-compilers@master
       with:
         target: "aarch64-linux-musl"
     - name: Install Cross Compliers (MacOS)
-      uses: Timmmm/setup-osxcross@main
+      uses: 8Mi-Tech/setup-osx-cross@6b7954cec12f774c2ff02b2a7596ec6791a39ed5
       with:
         osx-version: "${{ env.MACOSX_DEPLOYMENT_TARGET }}"
+    # 准备缓存 Cargo 内容
+    - name: Generate Cargo.lock file
+      run: cargo generate-lockfile
+    - name: Check Action Event Type
+      id: cargo-cache-check
+      run: |
+        case "${{ github.event_name }}" in
+          "push"|"workflow_dispatch") echo "type=full" >> "$GITHUB_OUTPUT"; echo "path=target" >> "$GITHUB_OUTPUT" ;;
+          "pull_request") echo "type=mini" >> "$GITHUB_OUTPUT" ;;
+        esac
+    - name: Cargo Cache Restore or Save
+      id: cargo-cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ${{ steps.cargo-cache-check.outputs.path }}
+        key: ${{ runner.os }}-cargo-${{ steps.cargo-cache-check.outputs.type }}-${{ hashFiles('**/Cargo.lock') }}
+    - name: Clean Old Cargo Cache
+      if:  ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.cargo-cache.outputs.cache-hit != 'true' }}
+      uses: yumemi-inc/clean-cache-action@v1
+      with:
+        ref: ${{ github.ref }}
+        key: ${{ runner.os }}-cargo-full-
+    # 编译流程
     - name: Install Rust Toolchains
       run: |
-        rustup target add $(echo "${{ env.targets }}" | tr '\n' ' ')
+        rustup target add $(echo "$targets" | tr '\n' ' ')
     - name: Build All
       id: build
       run: |
-        cargo build --release --target $(echo $(echo "${{ env.targets }}" | tr '\n' ' ') | sed 's/ / --target /g')
+        cargo build --release --target $(echo $(echo "$targets" | tr '\n' ' ') | sed 's/ / --target /g')
+    # 二进制测试流程
     - name: Run Tests
       run: cargo test --verbose
+    # 文件整理流程
     - name: Assemble Artifact
       run: |
-        TARGETS=($(echo "${{ env.targets }}"))
+        _targets=($(echo "$targets"))
         mkdir -p target/output
-        for target in "${TARGETS[@]}"; do
-          bin_name="${{ env.name }}"
+        for target in "${_targets[@]}"; do
+          bin_name="$name"
           [[ "$target" == *"windows"* ]] && suffix=".exe" || suffix=""
           
           src_path="target/$target/release/$bin_name$suffix"
@@ -79,6 +116,7 @@ jobs:
             echo "[WARNING] File doesn't exist: $src_path"
           fi
         done
+    # 上传到 Artifact 区
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
