@@ -12,4 +12,4 @@ jobs:
     steps:
       - uses: yumemi-inc/clean-cache-action@v1
         with:
-          ref: '${{ github.ref }}'
+          ref: 'refs/pull/${{ github.event.pull_request.number }}/merge'
