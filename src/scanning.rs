@@ -1,39 +1,19 @@
 use std::borrow::Cow;
 use std::io::Result;
-use std::net::{Ipv4Addr, Ipv6Addr, UdpSocket};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
+use std::{mem, thread};
+
+use socket2::{Domain, SockAddr, Socket, Type};
 
 const SIG_TERMINAL: u8 = 1;
 
 pub struct Scanning {
     signal: Sender<u8>,
     port: Arc<Mutex<Vec<u16>>>,
-}
-
-fn set_socket_reuse_address(socket: &UdpSocket) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::io::AsRawFd;
-        unsafe {
-            let optval: libc::c_int = 1;
-            let ret = libc::setsockopt(
-                socket.as_raw_fd(),
-                libc::SOL_SOCKET,
-                libc::SO_REUSEPORT,
-                &optval as *const _ as *const libc::c_void,
-                std::mem::size_of_val(&optval) as libc::socklen_t,
-            );
-            if ret != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-        }
-    }
-
-    return Ok(());
 }
 
 impl Scanning {
@@ -64,29 +44,43 @@ impl Scanning {
         output: Arc<Mutex<Vec<u16>>>,
         filter: fn(&str) -> bool,
     ) -> Result<()> {
-        let mut sockets: Vec<UdpSocket> = vec![{
-            let socket = UdpSocket::bind((Ipv6Addr::UNSPECIFIED, 4445))?;
-            set_socket_reuse_address(&socket)?;
+        let sockets: Vec<Socket> = vec![
+            {
+                let socket = Socket::new(Domain::IPV6, Type::DGRAM, None)?;
+                socket.set_only_v6(true)?;
+                socket.set_reuse_address(true)?;
+                socket.bind(&SockAddr::from(SocketAddrV6::new(
+                    Ipv6Addr::UNSPECIFIED,
+                    4445,
+                    0,
+                    0,
+                )))?;
 
-            socket.join_multicast_v6(&Ipv6Addr::from_str("FF75:230::60").unwrap(), 0)?;
-            socket.set_read_timeout(Some(Duration::from_millis(500)))?;
+                socket.join_multicast_v6(&Ipv6Addr::from_str("FF75:230::60").unwrap(), 0)?;
+                socket.set_read_timeout(Some(Duration::from_millis(500)))?;
 
-            socket
-        }];
+                socket
+            },
+            {
+                let socket = Socket::new(Domain::IPV4, Type::DGRAM, None)?;
+                socket.set_reuse_address(true)?;
+                socket.bind(&SockAddr::from(SocketAddrV4::new(
+                    Ipv4Addr::UNSPECIFIED,
+                    4445,
+                )))?;
 
-        if let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 4445)) {
-            set_socket_reuse_address(&socket)?;
+                socket.join_multicast_v4(
+                    &Ipv4Addr::from_str("224.0.2.60").unwrap(),
+                    &Ipv4Addr::UNSPECIFIED,
+                )?;
+                socket.set_read_timeout(Some(Duration::from_millis(500)))?;
 
-            socket.join_multicast_v4(
-                &Ipv4Addr::from_str("224.0.2.60").unwrap(),
-                &Ipv4Addr::UNSPECIFIED,
-            )?;
-            socket.set_read_timeout(Some(Duration::from_millis(500)))?;
+                socket
+            },
+        ];
 
-            sockets.push(socket);
-        }
-
-        let mut buf: [u8; 8192] = [0; 8192];
+        let mut buf: [mem::MaybeUninit<u8>; 8192] =
+            unsafe { mem::MaybeUninit::uninit().assume_init() };
 
         let mut ports: Vec<(u16, Instant)> = vec![];
 
@@ -113,7 +107,8 @@ impl Scanning {
             }
 
             for socket in sockets.iter() {
-                if let Ok((length, _sender)) = socket.recv_from(&mut buf) {
+                if let Ok((length, _)) = socket.recv_from(&mut buf) {
+                    let buf = unsafe { mem::transmute::<_, [u8; 8192]>(buf) };
                     let data: Cow<'_, str> = String::from_utf8_lossy(&buf[..length]);
 
                     {

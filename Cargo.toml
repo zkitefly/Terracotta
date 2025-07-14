@@ -15,6 +15,7 @@ rocket = { version = "0.5.1", default-features = false, features = ["json"] }
 sevenz-rust2 = { version = "0.16.0", default-features = false, features = [
     "util",
 ] }
+socket2 = "0.6.0"
 winapi = { version = "0.3.9" , default-features = false , features = ["winbase", "processenv"] }
 
 [build-dependencies]
