@@ -102,6 +102,12 @@ fn redirect_std(file: &std::path::PathBuf) {
         return;
     };
 
+    logging!(
+        "UI",
+        "Logs will be saved to {}. There will be not information on the console.",
+        file.to_str().unwrap()
+    );
+
     #[cfg(target_family = "unix")]
     {
         use std::os::unix::io::AsRawFd;
@@ -124,10 +130,4 @@ fn redirect_std(file: &std::path::PathBuf) {
             );
         }
     }
-
-    logging!(
-        "UI",
-        "Logs will be saved to {}. There will be not information on the console.",
-        file.to_str().unwrap()
-    );
 }
