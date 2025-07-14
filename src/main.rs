@@ -13,7 +13,7 @@ macro_rules! logging {
 extern crate rocket;
 use lazy_static::lazy_static;
 
-use std::{env, process, sync::mpsc, thread::spawn};
+use std::{env, process, sync::mpsc, thread::spawn, fs};
 
 pub mod code;
 pub mod easytier;
@@ -21,19 +21,19 @@ pub mod fakeserver;
 pub mod scanning;
 pub mod server;
 
-#[cfg(windows)]
+#[cfg(target_family="windows")]
 pub mod lock_windows;
-#[cfg(windows)]
+#[cfg(target_family="windows")]
 use lock_windows::State as lock;
-#[cfg(unix)]
+#[cfg(target_family="unix")]
 pub mod lock_unix;
-#[cfg(unix)]
+#[cfg(target_family="unix")]
 use lock_unix::State as lock;
 
 lazy_static! {
     static ref LOGGING_FILE: std::path::PathBuf = std::path::Path::join(
         &env::temp_dir(),
-        format!("terracotta-rs-logging-{}.log", process::id()),
+        format!("terracotta-log/{}.log", process::id()),
     );
 }
 
@@ -73,11 +73,30 @@ async fn main() {
 }
 
 async fn main_server(port: mpsc::Sender<u16>) {
-    logging!("UI", "Logs will be saved to {}. There will be not information on the console.", (*LOGGING_FILE).to_str().unwrap());
+    redirect_std(&*LOGGING_FILE);
 
-    let logging_file = std::fs::File::create((*LOGGING_FILE).clone()).unwrap();
+    server::server_main(port).await;
+}
+
+fn redirect_std(file: &std::path::PathBuf) {
+    logging!("UI", "Logs will be saved to {}. There will be not information on the console.", file.to_str().unwrap());
+    
+    let Some(parent) = file.parent() else {
+        return;
+    };
+
+    if !fs::metadata(parent).is_ok() {
+        if !fs::create_dir_all(parent).is_ok() {
+            return;
+        }
+    }
+
+    let Ok(logging_file) = fs::File::create((*LOGGING_FILE).clone()) else {
+        return;
+    };
+
     if cfg!(not(debug_assertions)) {
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(target_family="unix")]
         {
             use std::os::unix::io::AsRawFd;
             unsafe {
@@ -85,7 +104,7 @@ async fn main_server(port: mpsc::Sender<u16>) {
                 libc::dup2(logging_file.as_raw_fd(), libc::STDERR_FILENO);
             }
         }
-        #[cfg(windows)]
+        #[cfg(target_family="windows")]
         {
             use std::os::windows::io::AsRawHandle;
             unsafe {
@@ -100,6 +119,4 @@ async fn main_server(port: mpsc::Sender<u16>) {
             }
         }
     }
-
-    server::server_main(port).await;
 }

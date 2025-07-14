@@ -1,5 +1,6 @@
 use std::{
-    env, fs,
+    env::{self,},
+    fs,
     io::{self, Read},
     path::Path,
     process, vec,
@@ -17,14 +18,18 @@ fn main() {
     .unwrap();
     println!("cargo::rerun-if-changed=web");
 
-    if cfg!(target_os = "windows") {
-        winres::WindowsResource::new().set_icon_with_id(
-            Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap())
-                .join("icon.ico")
-                .to_str()
-                .unwrap(),
-            "icon",
-        ).compile().unwrap();
+    let target_family = String::from(env::var_os("CARGO_CFG_TARGET_FAMILY").unwrap().to_str().unwrap());
+    if target_family == "windows" {
+        winres::WindowsResource::new()
+            .set_icon_with_id(
+                Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap())
+                    .join("icon.ico")
+                    .to_str()
+                    .unwrap(),
+                "icon",
+            )
+            .compile()
+            .unwrap();
 
         match std::env::var("CARGO_CFG_TARGET_ENV").unwrap().as_str() {
             "gnu" => println!(
@@ -55,9 +60,13 @@ fn download_easytier() {
         desc: &'static str,
     }
 
-    let conf: EasytierFiles = if cfg!(target_os = "windows") {
-        if cfg!(target_arch = "x86_64") {
-            EasytierFiles {
+    let target_os = String::from(env::var_os("CARGO_CFG_TARGET_OS").unwrap().to_str().unwrap());
+    let target_arch =  String::from(env::var_os("CARGO_CFG_TARGET_ARCH").unwrap().to_str().unwrap());
+    let conf = match target_os.as_str()
+    {
+        "windows" => match target_arch.as_str()
+        {
+            "x86_64" => EasytierFiles {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/v2.3.2/easytier-windows-x86_64-v2.3.2.zip",
                 files: vec![
                     "easytier-windows-x86_64/easytier-core.exe",
@@ -65,10 +74,9 @@ fn download_easytier() {
                     "easytier-windows-x86_64/wintun.dll",
                 ],
                 entry: "easytier-core.exe",
-                desc: "windows-x86_64"
-            }
-        } else if cfg!(target_arch = "aarch64") {
-            EasytierFiles {
+                desc: "windows-x86_64",
+            },
+            "aarch64" => EasytierFiles {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/v2.3.2/easytier-windows-arm64-v2.3.2.zip",
                 files: vec![
                     "easytier-windows-arm64/easytier-core.exe",
@@ -76,38 +84,56 @@ fn download_easytier() {
                     "easytier-windows-arm64/wintun.dll",
                 ],
                 entry: "easytier-core.exe",
-                desc: "windows-arm64"
-            }
-        } else {
-            panic!("Unsupported target_arch: {}", std::env::consts::ARCH);
-        }
-    } else if cfg!(target_os = "linux") {
-        if cfg!(target_arch = "x86_64") {
-            EasytierFiles {
+                desc: "windows-arm64",
+            },
+            _ => panic!("Unsupported target arch: {}", target_arch),
+        },
+        "linux" => match target_arch.as_str() {
+            "x86_64" => EasytierFiles {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/v2.3.2/easytier-linux-x86_64-v2.3.2.zip",
                 files: vec!["easytier-linux-x86_64/easytier-core"],
                 entry: "easytier-core",
-                desc: "linux-x86_64"
-            }
-        } else if cfg!(target_arch = "aarch64") {
-            EasytierFiles {
+                desc: "linux-x86_64",
+            },
+            "aarch64" => EasytierFiles {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/v2.3.2/easytier-linux-aarch64-v2.3.2.zip",
                 files: vec!["easytier-linux-aarch64/easytier-core"],
                 entry: "easytier-core",
-                desc: "linux-arm64"
-            }
-        }  else {
-            panic!("Unsupported target_arch: {}", std::env::consts::ARCH);
+                desc: "linux-arm64",
+            },
+            _ => panic!("Unsupported target arch: {}", target_arch),
+        },
+        "macos" => match target_arch.as_str() {
+            "x86_64" => EasytierFiles {
+                url: "https://github.com/EasyTier/EasyTier/releases/download/v2.3.2/easytier-macos-x86_64-v2.3.2.zip",
+                files: vec!["easytier-macos-x86_64/easytier-core"],
+                entry: "easytier-core",
+                desc: "macos-x86_64",
+            },
+            "aarch64" => EasytierFiles {
+                url: "https://github.com/EasyTier/EasyTier/releases/download/v2.3.2/easytier-linux-aarch64-v2.3.2.zip",
+                files: vec!["easytier-linux-aarch64/easytier-core"],
+                entry: "easytier-core",
+                desc: "macos-arm64",
+            },
+            _ => panic!("Unsupported target arch: {}", target_arch),
         }
-    } else {
-        panic!("Unsupported target_os: {}", std::env::consts::OS);
+        _ => panic!("Unsupported target os: {}", target_os),
     };
 
-    let base = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap()).join(".easytier").join(conf.desc);
+    let base = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap())
+        .join(".easytier")
+        .join(conf.desc);
     let entry_conf = base.clone().join("entry-conf.v1.txt");
     let entry_archive = base.clone().join("easytier.7z");
-    println!("cargo::rustc-env=TERRACOTTA_ET_ENTRY_CONF={}", entry_conf.as_path().to_str().unwrap().to_string());
-    println!("cargo::rustc-env=TERRACOTTA_ET_ARCHIVE={}", entry_archive.as_path().to_str().unwrap().to_string());
+    println!(
+        "cargo::rustc-env=TERRACOTTA_ET_ENTRY_CONF={}",
+        entry_conf.as_path().to_str().unwrap().to_string()
+    );
+    println!(
+        "cargo::rustc-env=TERRACOTTA_ET_ARCHIVE={}",
+        entry_archive.as_path().to_str().unwrap().to_string()
+    );
 
     if fs::metadata(entry_conf.clone()).is_ok() {
         return;
@@ -132,7 +158,7 @@ fn download_easytier() {
     }
 
     let mut archive = zip::ZipArchive::new(fs::File::open(source.clone()).unwrap()).unwrap();
-    let target= base.clone().join("easytier.7z.tmp");
+    let target = base.clone().join("easytier.7z.tmp");
     let mut writer =
         sevenz_rust2::ArchiveWriter::new(fs::File::create(target.clone()).unwrap()).unwrap();
 
@@ -148,7 +174,10 @@ fn download_easytier() {
                     "",
                     Path::new(&entry.enclosed_name().unwrap())
                         .file_name()
-                        .unwrap().to_str().unwrap().to_string(),
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
                 ),
                 Some(io::Cursor::new(buf)),
             )

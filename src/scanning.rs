@@ -108,9 +108,9 @@ impl Scanning {
 
             for socket in sockets.iter() {
                 if let Ok((length, _)) = socket.recv_from(&mut buf) {
-                    let buf = unsafe { mem::transmute::<_, [u8; 8192]>(buf) };
-                    let data: Cow<'_, str> = String::from_utf8_lossy(&buf[..length]);
+                    let buf = unsafe { mem::transmute::<_, &[u8]>(&buf[..length]) };
 
+                    let data: Cow<'_, str> = String::from_utf8_lossy(buf);
                     {
                         let begin = data.find("[MOTD]");
                         let end = data.find("[/MOTD]");
