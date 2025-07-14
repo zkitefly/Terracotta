@@ -13,16 +13,16 @@ fn main() {
 
     sevenz_rust2::compress_to_path(
         "web",
-        Path::new(&env::var_os("OUT_DIR").unwrap()).join("webstatics.7z"),
+        Path::new(&env::var("OUT_DIR").unwrap()).join("webstatics.7z"),
     )
     .unwrap();
     println!("cargo::rerun-if-changed=web");
 
-    let target_family = String::from(env::var_os("CARGO_CFG_TARGET_FAMILY").unwrap().to_str().unwrap());
+    let target_family = env::var("CARGO_CFG_TARGET_FAMILY").unwrap().to_string();
     if target_family == "windows" {
         winres::WindowsResource::new()
             .set_icon_with_id(
-                Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap())
+                Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
                     .join("icon.ico")
                     .to_str()
                     .unwrap(),
@@ -60,8 +60,8 @@ fn download_easytier() {
         desc: &'static str,
     }
 
-    let target_os = String::from(env::var_os("CARGO_CFG_TARGET_OS").unwrap().to_str().unwrap());
-    let target_arch =  String::from(env::var_os("CARGO_CFG_TARGET_ARCH").unwrap().to_str().unwrap());
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap().to_string();
+    let target_arch =  env::var("CARGO_CFG_TARGET_ARCH").unwrap().to_string();
     let conf = match target_os.as_str()
     {
         "windows" => match target_arch.as_str()
@@ -121,7 +121,7 @@ fn download_easytier() {
         _ => panic!("Unsupported target os: {}", target_os),
     };
 
-    let base = Path::new(&env::var_os("CARGO_MANIFEST_DIR").unwrap())
+    let base = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
         .join(".easytier")
         .join(conf.desc);
     let entry_conf = base.clone().join("entry-conf.v1.txt");
