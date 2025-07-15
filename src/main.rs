@@ -13,7 +13,7 @@ macro_rules! logging {
 extern crate rocket;
 use lazy_static::lazy_static;
 
-use std::{env, fs, process, sync::mpsc, thread::spawn};
+use std::{env, fs, sync::mpsc, thread::spawn};
 
 pub mod code;
 pub mod easytier;
@@ -31,10 +31,27 @@ pub mod lock_unix;
 use lock_unix::State as lock;
 
 lazy_static! {
-    static ref LOGGING_FILE: std::path::PathBuf = std::path::Path::join(
-        &env::temp_dir(),
-        format!("terracotta-log/{}.log", process::id()),
-    );
+    static ref LOGGING_FILE: std::path::PathBuf = {
+        let base = if cfg!(target_os = "macos")
+            && let Ok(home) = env::var("HOME")
+        {
+            std::path::Path::new(&home).to_owned()
+        } else {
+            std::path::Path::new(&env::temp_dir()).to_owned()
+        };
+
+        use chrono::{Datelike, Timelike};
+        let now = chrono::Local::now();
+        base.join(format!(
+            "terracotta-log/{:04}-{:02}-{:02}-{:02}-{:02}-{:02}.log",
+            now.year(),
+            now.month(),
+            now.day(),
+            now.hour(),
+            now.minute(),
+            now.second()
+        ))
+    };
 }
 
 #[rocket::main]
