@@ -1,12 +1,10 @@
 use std::{
-    env::{self,},
+    env,
     fs,
     io::{self, Read},
     path::Path,
     process, vec,
 };
-
-extern crate winres;
 
 fn main() {
     download_easytier();
@@ -20,35 +18,21 @@ fn main() {
 
     let target_family = env::var("CARGO_CFG_TARGET_FAMILY").unwrap().to_string();
     if target_family == "windows" {
-        winres::WindowsResource::new()
-            .set_icon_with_id(
-                Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
-                    .join("icon.ico")
-                    .to_str()
-                    .unwrap(),
-                "icon",
-            )
-            .compile()
-            .unwrap();
+        let mut compiler = winresource::WindowsResource::new();
 
-        match std::env::var("CARGO_CFG_TARGET_ENV").unwrap().as_str() {
-            "gnu" => println!(
-                "cargo::rustc-link-arg={}",
-                Path::new(&env::var("OUT_DIR").unwrap())
-                    .join("resource.o")
-                    .to_str()
-                    .unwrap()
-            ),
-            "msvc" => println!(
-                "cargo::rustc-link-arg={}",
-                Path::new(&env::var("OUT_DIR").unwrap())
-                    .join("resource.res")
-                    .to_str()
-                    .unwrap()
-            ),
-            _ => panic!(),
+        {
+            let desc = env::var("TARGET").unwrap().replace('-', "_").to_uppercase();
+
+            if let Ok(windres) = env::var(&format!("CARGO_TARGET_{}_WINDRES_PATH", desc)) {
+                compiler.set_windres_path(&windres.to_string());
+            }
+            if let Ok(ar) = env::var(&format!("CARGO_TARGET_{}_AR", desc)) {
+                compiler.set_ar_path(&ar.to_string());
+            }
         }
-        println!("cargo::rerun-if-changed=icon.ico");
+
+        compiler.set_icon("icon.ico");
+        compiler.compile().unwrap();
     }
 }
 
@@ -61,11 +45,9 @@ fn download_easytier() {
     }
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap().to_string();
-    let target_arch =  env::var("CARGO_CFG_TARGET_ARCH").unwrap().to_string();
-    let conf = match target_os.as_str()
-    {
-        "windows" => match target_arch.as_str()
-        {
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap().to_string();
+    let conf = match target_os.as_str() {
+        "windows" => match target_arch.as_str() {
             "x86_64" => EasytierFiles {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/v2.3.2/easytier-windows-x86_64-v2.3.2.zip",
                 files: vec![
@@ -117,7 +99,7 @@ fn download_easytier() {
                 desc: "macos-arm64",
             },
             _ => panic!("Unsupported target arch: {}", target_arch),
-        }
+        },
         _ => panic!("Unsupported target os: {}", target_os),
     };
 

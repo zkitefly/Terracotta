@@ -9,23 +9,15 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_AR: aarch64-linux-gnu-ar
-  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-musl-gcc
-  CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_AR: aarch64-linux-musl-ar
-  CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_LINKER: "${{github.workspace}}/llvm-mingw/bin/x86_64-w64-mingw32-clang"
-  CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_AR: "${{github.workspace}}/llvm-mingw/bin/x86_64-w64-mingw32-ar"
-  CARGO_TARGET_AARCH64_PC_WINDOWS_GNULLVM_LINKER: "${{github.workspace}}/llvm-mingw/bin/aarch64-w64-mingw32-clang"
-  CARGO_TARGET_AARCH64_PC_WINDOWS_GNULLVM_AR: "${{github.workspace}}/llvm-mingw/bin/aarch64-w64-mingw32-ar"
-  #RUSTFLAGS: "-C target-feature=+crt-static"
+  #
   name: "terracotta"
   MACOSX_DEPLOYMENT_TARGET: "11.1"
   RUST_BACKTRACE: "full"
   targets: >-
     x86_64-unknown-linux-musl 
     x86_64-unknown-linux-gnu 
-    x86_64-pc-windows-gnullvm
-    x86_64-pc-windows-gnu
+    x86_64-pc-windows-gnullvm 
+    x86_64-pc-windows-gnu 
     x86_64-apple-darwin 
     aarch64-unknown-linux-musl 
     aarch64-unknown-linux-gnu 
@@ -53,7 +45,7 @@ jobs:
         wget -O llvm-mingw.tar.xz https://github.com/mstorsjo/llvm-mingw/releases/download/20250709/llvm-mingw-20250709-ucrt-ubuntu-22.04-x86_64.tar.xz
         tar -xf llvm-mingw.tar.xz -C ${{github.workspace}}
         mv -v ${{github.workspace}}/llvm-mingw-* ${{github.workspace}}/llvm-mingw
-        #echo "${{github.workspace}}/llvm-mingw/bin" >> $GITHUB_PATH
+        chmod +x llvm-mingw/bin/*
         mv -v ".github/.cargo" "."
     - name: Install Cross Compliers (General)
       uses: Lesmiscore/musl-cross-compilers@master
@@ -94,6 +86,20 @@ jobs:
         rustup target add $(echo "$targets" | tr '\n' ' ')
     - name: Build All
       id: build
+      env:
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_AR: aarch64-linux-gnu-ar
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-musl-gcc
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_AR: aarch64-linux-musl-ar
+        CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: "/usr/bin/x86_64-w64-mingw32-gcc"
+        CARGO_TARGET_X86_64_PC_WINDOWS_GNU_AR: "/usr/bin/x86_64-w64-mingw32-ar"
+        CARGO_TARGET_X86_64_PC_WINDOWS_GNU_WINDRES_PATH: "/usr/bin/x86_64-w64-mingw32-windres"
+        CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_LINKER: "${{github.workspace}}/llvm-mingw/bin/x86_64-w64-mingw32-clang"
+        CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_AR: "${{github.workspace}}/llvm-mingw/bin/x86_64-w64-mingw32-ar"
+        CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_WINDRES_PATH: "${{github.workspace}}/llvm-mingw/bin/x86_64-w64-mingw32-windres"
+        CARGO_TARGET_AARCH64_PC_WINDOWS_GNULLVM_LINKER: "${{github.workspace}}/llvm-mingw/bin/aarch64-w64-mingw32-clang"
+        CARGO_TARGET_AARCH64_PC_WINDOWS_GNULLVM_AR: "${{github.workspace}}/llvm-mingw/bin/aarch64-w64-mingw32-ar"
+        CARGO_TARGET_AARCH64_PC_WINDOWS_GNULLVM_WINDRES_PATH: "${{github.workspace}}/llvm-mingw/bin/aarch64-w64-mingw32-windres"
       run: |
         cargo build --release --target $(echo $(echo "$targets" | tr '\n' ' ') | sed 's/ / --target /g')
     # 二进制测试流程
