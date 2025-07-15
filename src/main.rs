@@ -116,7 +116,7 @@ fn redirect_std(file: &std::path::PathBuf) {
         }
     }
 
-    let Ok(logging_file) = fs::File::create((*LOGGING_FILE).clone()) else {
+    let Ok(logging_file) = fs::File::create(file.clone()) else {
         return;
     };
 
