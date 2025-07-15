@@ -84,7 +84,8 @@ async fn main_server(port: mpsc::Sender<u16>) {
 }
 
 fn redirect_std(file: &std::path::PathBuf) {
-    if cfg!(debug_assertions) {
+    if cfg!(debug_assertions) || env::args().into_iter().any(|e| &e == "--redirect-std=no") {
+        logging!("UI", "Log redirection is disabled.");
         return;
     }
 
