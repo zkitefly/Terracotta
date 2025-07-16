@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::io::Result;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -44,40 +44,37 @@ impl Scanning {
         output: Arc<Mutex<Vec<u16>>>,
         filter: fn(&str) -> bool,
     ) -> Result<()> {
-        let sockets: Vec<Socket> = vec![
-            {
-                let socket = Socket::new(Domain::IPV6, Type::DGRAM, None)?;
-                socket.set_only_v6(true)?;
-                socket.set_reuse_address(true)?;
-                socket.bind(&SockAddr::from(SocketAddrV6::new(
-                    Ipv6Addr::UNSPECIFIED,
-                    4445,
-                    0,
-                    0,
-                )))?;
+        let sockets: Vec<(Socket, &IpAddr)> = crate::ADDRESSES
+            .iter()
+            .map(|address| match address {
+                IpAddr::V4(ip) => {
+                    let socket = Socket::new(Domain::IPV4, Type::DGRAM, None)?;
+                    socket.set_reuse_address(true)?;
+                    socket.bind(&SockAddr::from(SocketAddrV4::new(ip.clone(), 4445)))?;
+                    socket.join_multicast_v4(
+                        &Ipv4Addr::from_str("224.0.2.60").unwrap(),
+                        &Ipv4Addr::UNSPECIFIED,
+                    )?;
+                    socket.set_read_timeout(Some(Duration::from_millis(500)))?;
+                    Ok((socket, address))
+                }
+                IpAddr::V6(ip) => {
+                    let socket = Socket::new(Domain::IPV6, Type::DGRAM, None)?;
+                    socket.set_only_v6(true)?;
+                    socket.set_reuse_address(true)?;
+                    socket.bind(&SockAddr::from(SocketAddrV6::new(ip.clone(), 4445, 0, 0)))?;
+                    socket.join_multicast_v6(&Ipv6Addr::from_str("FF75:230::60").unwrap(), 0)?;
+                    socket.set_read_timeout(Some(Duration::from_millis(500)))?;
+                    Ok((socket, address))
+                }
+            })
+            .filter_map(|r: Result<(Socket, &IpAddr)>| match r {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            })
+            .collect();
 
-                socket.join_multicast_v6(&Ipv6Addr::from_str("FF75:230::60").unwrap(), 0)?;
-                socket.set_read_timeout(Some(Duration::from_millis(500)))?;
-
-                socket
-            },
-            {
-                let socket = Socket::new(Domain::IPV4, Type::DGRAM, None)?;
-                socket.set_reuse_address(true)?;
-                socket.bind(&SockAddr::from(SocketAddrV4::new(
-                    Ipv4Addr::UNSPECIFIED,
-                    4445,
-                )))?;
-
-                socket.join_multicast_v4(
-                    &Ipv4Addr::from_str("224.0.2.60").unwrap(),
-                    &Ipv4Addr::UNSPECIFIED,
-                )?;
-                socket.set_read_timeout(Some(Duration::from_millis(500)))?;
-
-                socket
-            },
-        ];
+        logging!("Server Scanner", "Starting server scanner at IP: {:?}", sockets.iter().map(|p| p.1).collect::<Vec<_>>());
 
         let mut buf: [mem::MaybeUninit<u8>; 8192] =
             unsafe { mem::MaybeUninit::uninit().assume_init() };
@@ -106,7 +103,7 @@ impl Scanning {
                 }
             }
 
-            for socket in sockets.iter() {
+            for (socket, _) in sockets.iter() {
                 if let Ok((length, _)) = socket.recv_from(&mut buf) {
                     let buf = unsafe { mem::transmute::<_, &[u8]>(&buf[..length]) };
 

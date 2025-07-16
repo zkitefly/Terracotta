@@ -13,7 +13,12 @@ macro_rules! logging {
 extern crate rocket;
 use lazy_static::lazy_static;
 
-use std::{env, fs, sync::mpsc, thread::spawn};
+use std::{
+    env, fs,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::mpsc,
+    thread::spawn,
+};
 
 pub mod code;
 pub mod easytier;
@@ -29,6 +34,38 @@ use lock_windows::State as lock;
 pub mod lock_unix;
 #[cfg(target_family = "unix")]
 use lock_unix::State as lock;
+
+lazy_static::lazy_static! {
+    static ref ADDRESSES: Vec<IpAddr> = {
+        let mut addresses: Vec<IpAddr> = vec![];
+
+        if let Ok(networks) = local_ip_address::list_afinet_netifas() {
+            for (_, address) in networks.into_iter() {
+                match address {
+                    IpAddr::V4(ip) => {
+                        let parts = ip.octets();
+                        if !(parts[0] == 10 && parts[1] == 144 && parts[2] == 144) && ip != Ipv4Addr::LOCALHOST && ip != Ipv4Addr::UNSPECIFIED {
+                            addresses.push(address);
+                        }
+                    },
+                    IpAddr::V6(ip) => {
+                        if ip != Ipv6Addr::LOCALHOST && ip != Ipv6Addr::UNSPECIFIED {
+                            addresses.push(address);
+                        }
+                    }
+                };
+            }
+        }
+
+        if addresses.len() == 0 {
+            addresses.push(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+            addresses.push(IpAddr::V6(Ipv6Addr::UNSPECIFIED));
+        }
+
+        logging!("UI", "Local IP Addresses: {:?}", addresses);
+        addresses
+    };
+}
 
 lazy_static! {
     static ref LOGGING_FILE: std::path::PathBuf = {
@@ -101,7 +138,14 @@ async fn main_server(port: mpsc::Sender<u16>) {
 }
 
 fn redirect_std(file: &std::path::PathBuf) {
-    if cfg!(debug_assertions) || env::args().into_iter().any(|e| &e == "--redirect-std=no") {
+    let is_enable = env::args().into_iter().any(|e| &e == "--redirect-std=yes");
+    let is_disable = env::args().into_iter().any(|e| &e == "--redirect-std=no");
+
+    if if is_enable != is_disable {
+        is_disable
+    } else {
+        cfg!(debug_assertions)
+    } {
         logging!("UI", "Log redirection is disabled.");
         return;
     }
@@ -148,4 +192,6 @@ fn redirect_std(file: &std::path::PathBuf) {
             );
         }
     }
+
+    Box::leak(Box::new(logging_file));
 }

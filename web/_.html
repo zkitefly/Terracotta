@@ -691,33 +691,35 @@
             let failCounter = 0, index = -1;
 
             setInterval(() => {
-                fetch("/state").then(r => r.json()).then(r => {
-                    failCounter = 0;
-                    if (r.index <= index) {
-                        return;
-                    }
-                    index = r.index;
+                setTimeout(() => {
+                    fetch("/state").then(r => r.json()).then(r => {
+                        failCounter = 0;
+                        if (r.index <= index) {
+                            return;
+                        }
+                        index = r.index;
 
-                    if (r.state == "waiting") {
-                        if (["main-view", "guest-input-view"].indexOf(document.getElementsByClassName("active")[0].id) == -1) {
-                            showView("main-view");
+                        if (r.state == "waiting") {
+                            if (["main-view", "guest-input-view"].indexOf(document.getElementsByClassName("active")[0].id) == -1) {
+                                showView("main-view");
+                            }
+                        } else if (r.state == "scanning") {
+                            showView("host-loading-view");
+                        } else if (r.state == "hosting") {
+                            showView("host-result-view");
+                            if (document.getElementById("invite-code-display").innerText != r.room) {
+                                document.getElementById("invite-code-display").innerText = r.room;
+                            }
+                        } else if (r.state == "guesting") {
+                            showView("guest-result-view");
+                            document.getElementById("guest-backup-address").innerText = r.url
                         }
-                    } else if (r.state == "scanning") {
-                        showView("host-loading-view");
-                    } else if (r.state == "hosting") {
-                        showView("host-result-view");
-                        if (document.getElementById("invite-code-display").innerText != r.room) {
-                            document.getElementById("invite-code-display").innerText = r.room;
+                    }).catch(() => {
+                        failCounter += 1;
+                        if (failCounter == 3) {
+                            alert("Terracotta | 陶瓦主程序已崩溃，请向开发者报告该错误");
                         }
-                    } else if (r.state == "guesting") {
-                        showView("guest-result-view");
-                        document.getElementById("guest-backup-address").innerText = r.url
-                    }
-                }).catch(() => {
-                    failCounter += 1;
-                    if (failCounter == 3) {
-                        alert("Terracotta | 陶瓦主程序已崩溃，请向开发者报告该错误");
-                    }
+                    });
                 });
             }, 500);
         }

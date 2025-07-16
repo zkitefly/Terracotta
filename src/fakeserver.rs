@@ -28,39 +28,7 @@ pub fn create(motd: String) -> FakeServer {
 }
 
 fn run(motd: String, signal: Receiver<u32>) -> Result<()> {
-    lazy_static::lazy_static! {
-        static ref ADDRESSES: Vec<IpAddr> = {
-            let mut addresses: Vec<IpAddr> = vec![];
-
-            if let Ok(networks) = local_ip_address::list_afinet_netifas() {
-                for (_, address) in networks.into_iter() {
-                    match address {
-                        IpAddr::V4(ip) => {
-                            let parts = ip.octets();
-                            if !(parts[0] == 10 && parts[1] == 144 && parts[2] == 144) && ip != Ipv4Addr::LOCALHOST && ip != Ipv4Addr::UNSPECIFIED {
-                                addresses.push(address);
-                            }
-                        },
-                        IpAddr::V6(ip) => {
-                            if ip != Ipv6Addr::LOCALHOST && ip != Ipv6Addr::UNSPECIFIED {
-                                addresses.push(address);
-                            }
-                        }
-                    };
-                }
-            }
-
-            if addresses.len() == 0 {
-                addresses.push(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-                addresses.push(IpAddr::V6(Ipv6Addr::UNSPECIFIED));
-            }
-
-            logging!("Fake Server", "Local IP Addresses: {:?}", addresses);
-            addresses
-        };
-    }
-
-    let sockets: Vec<(UdpSocket, &'static SocketAddr)> = ADDRESSES
+    let sockets: Vec<(UdpSocket, &'static SocketAddr)> = crate::ADDRESSES
         .iter()
         .map(|address| {
             let socket = UdpSocket::bind((address.clone(), 0))?;

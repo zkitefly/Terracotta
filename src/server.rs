@@ -187,14 +187,14 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
 
         loop {
             fn handle_offline(time: &Instant) -> bool {
-                const TIMEOUT: u128 = if cfg!(debug_assertions) { 3000 } else { 10000 };
+                const TIMEOUT: u64 = if cfg!(debug_assertions) { 3 } else { 120 };
 
-                let timeout = Instant::now().duration_since(*time).as_millis();
+                let timeout = Instant::now().duration_since(*time).as_secs();
                 if timeout >= TIMEOUT {
                     logging!(
                         "UI",
                         "Server has been in IDE state for {}s. Shutting down.",
-                        TIMEOUT / 1000
+                        TIMEOUT
                     );
                     return true;
                 }
