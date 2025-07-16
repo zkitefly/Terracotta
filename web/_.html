@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Terracotta | 陶瓦 - Minecraft联机助手</title>
+    <link rel="stylesheet" href="font-awesome.css">
     <style>
         * {
             margin: 0;
@@ -653,6 +654,14 @@
                     </button>
                 </div>
             </div>
+
+             <div class="view" id="ide-view">
+                <div class="result-view">
+                    <div class="result-icon">❌</div>
+                    <h2 class="result-title">请重启主程序</h2>
+                    <h2 class="result-description">为降低功耗，Terracotta | 陶瓦闲置十分钟后将自动退出。</h2>
+                </div>
+            </div>
         </div>
     </div>
     <footer>
@@ -688,38 +697,47 @@
 
         let state = { "state": "waiting" };
         if (new URL(location.href).protocol != "file:") {
-            let failCounter = 0, index = -1;
+            let failCounter = 0, index = -1, durations = new Array(10).fill(0);
 
-            setInterval(() => {
-                setTimeout(() => {
-                    fetch("/state").then(r => r.json()).then(r => {
-                        failCounter = 0;
-                        if (r.index <= index) {
-                            return;
-                        }
-                        index = r.index;
+            let start = Date.now();
+            let timer = setInterval(() => {
+                let now = Date.now();
+                durations.splice(0, 1);
+                durations.push(now - start);
+                start = now;
 
-                        if (r.state == "waiting") {
-                            if (["main-view", "guest-input-view"].indexOf(document.getElementsByClassName("active")[0].id) == -1) {
-                                showView("main-view");
-                            }
-                        } else if (r.state == "scanning") {
-                            showView("host-loading-view");
-                        } else if (r.state == "hosting") {
-                            showView("host-result-view");
-                            if (document.getElementById("invite-code-display").innerText != r.room) {
-                                document.getElementById("invite-code-display").innerText = r.room;
-                            }
-                        } else if (r.state == "guesting") {
-                            showView("guest-result-view");
-                            document.getElementById("guest-backup-address").innerText = r.url
+                fetch("/state").then(r => r.json()).then(r => {
+                    failCounter = 0;
+                    if (r.index <= index) {
+                        return;
+                    }
+                    index = r.index;
+
+                    if (r.state == "waiting") {
+                        if (["main-view", "guest-input-view"].indexOf(document.getElementsByClassName("active")[0].id) == -1) {
+                            showView("main-view");
                         }
-                    }).catch(() => {
-                        failCounter += 1;
-                        if (failCounter == 3) {
+                    } else if (r.state == "scanning") {
+                        showView("host-loading-view");
+                    } else if (r.state == "hosting") {
+                        showView("host-result-view");
+                        if (document.getElementById("invite-code-display").innerText != r.room) {
+                            document.getElementById("invite-code-display").innerText = r.room;
+                        }
+                    } else if (r.state == "guesting") {
+                        showView("guest-result-view");
+                        document.getElementById("guest-backup-address").innerText = r.url
+                    }
+                }).catch(() => {
+                    failCounter += 1;
+                    if (failCounter == 3) {
+                        if (Math.max(...durations) > 20000) {
+                            showView("ide-view");
+                            clearInterval(timer);
+                        } else {
                             alert("Terracotta | 陶瓦主程序已崩溃，请向开发者报告该错误");
                         }
-                    });
+                    }
                 });
             }, 500);
         }

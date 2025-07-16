@@ -1,4 +1,5 @@
-use std::sync::{mpsc, Mutex};
+use std::path::PathBuf;
+use std::sync::{Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -6,11 +7,11 @@ use rocket::http::Status;
 use rocket::response::content::RawHtml;
 use rocket::serde::json;
 
+use crate::LOGGING_FILE;
+use crate::code::{self, Room};
+use crate::easytier::Easytier;
 use crate::fakeserver::FakeServer;
 use crate::scanning::Scanning;
-use crate::easytier::Easytier;
-use crate::code::{self, Room};
-use crate::LOGGING_FILE;
 
 enum AppState {
     Waiting {
@@ -57,21 +58,52 @@ fn access_state() -> std::sync::MutexGuard<'static, (u32, AppState)> {
 
 static WEB_STATIC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/webstatics.7z"));
 
-#[get("/")]
-fn index() -> Result<RawHtml<&'static str>, Status> {
+#[get("/<path..>")]
+fn static_files(mut path: PathBuf) -> Result<RawHtml<&'static str>, Status> {
     lazy_static::lazy_static! {
-        static ref MAIN_PAGE: String = {
+        static ref MAIN_PAGE: Vec<(PathBuf, String)> = {
             let mut reader = sevenz_rust2::ArchiveReader::new(
                 std::io::Cursor::new(WEB_STATIC),
                 sevenz_rust2::Password::empty(),
             )
             .unwrap();
+            let mut pages: Vec<(PathBuf, String)> = vec![];
+            let _ = reader.for_each_entries(|entry, reader| {
+                if entry.is_directory() {
+                    return Ok(true);
+                }
 
-            String::from_utf8(reader.read_file("_.html").unwrap()).unwrap()
+                let mut buffer = String::new();
+                reader.read_to_string(&mut buffer).unwrap();
+                pages.push((PathBuf::from(entry.name()), buffer));
+
+                return Ok(true);
+            });
+
+            #[cfg(debug_assertions)] {
+                let mut msg = String::from("Loading static files: ");
+                for (path, data) in pages.iter() {
+                    msg.push_str("\n- ");
+                    msg.push_str(path.as_os_str().to_str().unwrap());
+                    msg.push_str(": ");
+                    msg.push_str(&data.len().to_string());
+                    msg.push_str(" bytes");
+                }
+                logging!("UI", "{}", msg);
+            }
+
+            pages
         };
     }
 
-    return Ok(RawHtml(&MAIN_PAGE));
+    if path.as_os_str().is_empty() {
+        path = PathBuf::from("_.html");
+    }
+
+    return match MAIN_PAGE.iter().find(|(entry, _)| *entry == path) {
+        Some((_, data)) => Ok(RawHtml(data)),
+        None => Err(Status { code: 404 }),
+    };
 }
 
 #[get("/state")]
@@ -160,23 +192,26 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
     .mount(
         "/",
         routes![
-        index,
-        get_state,
-        set_state_ide,
-        set_state_scanning,
-        set_state_guesting,
-        download_log
-    ]
+            get_state,
+            set_state_ide,
+            set_state_scanning,
+            set_state_guesting,
+            download_log,
+            static_files,
+        ],
     )
-    .attach(rocket::fairing::AdHoc::on_liftoff("Open Browser", move |rocket| {
-        Box::pin(async move {
-            launch_signal_tx.send(()).unwrap();
-            
-            let local_port = rocket.config().port;
-            let _ = open::that(format!("http://127.0.0.1:{}/", local_port));
-            let _ = port.send(local_port);
-        })
-    }))
+    .attach(rocket::fairing::AdHoc::on_liftoff(
+        "Open Browser",
+        move |rocket| {
+            Box::pin(async move {
+                launch_signal_tx.send(()).unwrap();
+
+                let local_port = rocket.config().port;
+                let _ = open::that(format!("http://127.0.0.1:{}/", local_port));
+                let _ = port.send(local_port);
+            })
+        },
+    ))
     .ignite()
     .await
     .unwrap();
@@ -187,7 +222,7 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
 
         loop {
             fn handle_offline(time: &Instant) -> bool {
-                const TIMEOUT: u64 = if cfg!(debug_assertions) { 3 } else { 120 };
+                const TIMEOUT: u64 = if cfg!(debug_assertions) { 3 } else { 600 };
 
                 let timeout = Instant::now().duration_since(*time).as_secs();
                 if timeout >= TIMEOUT {
