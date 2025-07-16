@@ -235,7 +235,25 @@ impl Room {
             }),
         );
 
-        if socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None).unwrap().only_v6().unwrap() {
+        lazy_static::lazy_static! {
+            static ref ONLY_V6: bool = {
+                let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None).unwrap();
+                if cfg!(debug_assertions) && cfg!(target_family = "windows") {
+                    // Socket2 is having a heated debate on whether only_v6 should return an 4 bytes buffer rather than 1.
+                    // See https://github.com/rust-lang/socket2/pull/603
+                    // For now, we catch this panic information where debug assertions are enabled and we are on Windows.
+                    if let Ok(v) = std::panic::catch_unwind(|| socket.only_v6()) {
+                        v.unwrap()
+                    } else {
+                        false
+                    }
+                } else {
+                    socket.only_v6().unwrap()
+                }
+            };
+        }
+
+        if *ONLY_V6 {
             args.push(format!(
                 "--port-forward=tcp://0.0.0.0:{}/10.144.144.1:{}",
                 LOCAL_PORT, self.port

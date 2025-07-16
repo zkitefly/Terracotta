@@ -628,7 +628,7 @@
                     <div class="input-group">
                         <input type="text" class="input-field" id="invite-code-input"
                             placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX">
-                        <p class="input-hint" id="input-hint">没有邀请码？请创建房间。</p>
+                        <p class="input-hint" id="invite-code-input-hint">没有邀请码？请创建房间。</p>
                     </div>
                     <button class="action-button" id="join-button">
                         <i class="fas fa-sign-in-alt"></i>
@@ -655,11 +655,11 @@
                 </div>
             </div>
 
-             <div class="view" id="ide-view">
+            <div class="view" id="ide-view">
                 <div class="result-view">
                     <div class="result-icon">❌</div>
-                    <h2 class="result-title">请重启主程序</h2>
-                    <h2 class="result-description">为降低功耗，Terracotta | 陶瓦闲置十分钟后将自动退出。</h2>
+                    <h2 class="result-title" id="error-title"></h2>
+                    <h2 class="result-description" id="error-desc"></h2>
                 </div>
             </div>
         </div>
@@ -706,38 +706,45 @@
                 durations.push(now - start);
                 start = now;
 
-                fetch("/state").then(r => r.json()).then(r => {
-                    failCounter = 0;
-                    if (r.index <= index) {
-                        return;
-                    }
-                    index = r.index;
+                setTimeout(() => {
+                    fetch("/state").then(r => r.json()).then(r => {
+                        failCounter = 0;
+                        if (r.index <= index) {
+                            return;
+                        }
+                        index = r.index;
 
-                    if (r.state == "waiting") {
-                        if (["main-view", "guest-input-view"].indexOf(document.getElementsByClassName("active")[0].id) == -1) {
-                            showView("main-view");
+                        if (r.state == "waiting") {
+                            if (["main-view", "guest-input-view"].indexOf(document.getElementsByClassName("active")[0].id) == -1) {
+                                showView("main-view");
+                            }
+                        } else if (r.state == "scanning") {
+                            showView("host-loading-view");
+                        } else if (r.state == "hosting") {
+                            showView("host-result-view");
+                            if (document.getElementById("invite-code-display").innerText != r.room) {
+                                document.getElementById("invite-code-display").innerText = r.room;
+                            }
+                        } else if (r.state == "guesting") {
+                            showView("guest-result-view");
+                            document.getElementById("guest-backup-address").innerText = r.url
                         }
-                    } else if (r.state == "scanning") {
-                        showView("host-loading-view");
-                    } else if (r.state == "hosting") {
-                        showView("host-result-view");
-                        if (document.getElementById("invite-code-display").innerText != r.room) {
-                            document.getElementById("invite-code-display").innerText = r.room;
-                        }
-                    } else if (r.state == "guesting") {
-                        showView("guest-result-view");
-                        document.getElementById("guest-backup-address").innerText = r.url
-                    }
-                }).catch(() => {
-                    failCounter += 1;
-                    if (failCounter == 3) {
-                        if (Math.max(...durations) > 20000) {
-                            showView("ide-view");
+                    }).catch(() => {
+                        failCounter += 1;
+                        if (failCounter == 3) {
                             clearInterval(timer);
-                        } else {
-                            alert("Terracotta | 陶瓦主程序已崩溃，请向开发者报告该错误");
+
+                            let error;
+                            if (Math.max(...durations) > 20000) {
+                                error = { "title": "请重启主程序", "desc": "为降低功耗，Terracotta | 陶瓦闲置十分钟后将自动退出。" };
+                            } else {
+                                error = { "title": "程序出现错误", "desc": "请向开发者报告该错误" };
+                            }
+                            document.getElementById("error-title").innerText = error.title;
+                            document.getElementById("error-desc").innerText = error.desc;
+                            showView("ide-view");
                         }
-                    }
+                    });
                 });
             }, 500);
         }
@@ -757,7 +764,7 @@
         document.getElementById('guest-tile').addEventListener('click', () => {
             showView('guest-input-view');
             document.getElementById("invite-code-input").value = "";
-            document.getElementById("input-hint").innerText = "没有邀请码？请创建房间。";
+            document.getElementById("invite-code-code-hint").innerText = "没有邀请码？请创建房间。";
             document.getElementById("input-hint").style = "";
         });
 
@@ -766,8 +773,8 @@
             fetch("/state/guesting?room=" + document.getElementById('invite-code-input').value).then(r => {
                 if (r.status == 400) {
                     showView('guest-input-view');
-                    document.getElementById("input-hint").innerText = "邀请码格式错误";
-                    document.getElementById("input-hint").style = "color: orange; font-weight: bold;";
+                    document.getElementById("invite-code-input-hint").innerText = "邀请码格式错误";
+                    document.getElementById("invite-code-input-hint").style = "color: orange; font-weight: bold;";
                 }
             });
         });

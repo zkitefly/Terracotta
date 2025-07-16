@@ -4,7 +4,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use rocket::http::Status;
-use rocket::response::content::RawHtml;
 use rocket::serde::json;
 
 use crate::LOGGING_FILE;
@@ -58,24 +57,39 @@ fn access_state() -> std::sync::MutexGuard<'static, (u32, AppState)> {
 
 static WEB_STATIC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/webstatics.7z"));
 
+pub struct MemoryFile(PathBuf, &'static [u8]);
+
+impl<'r> rocket::response::Responder<'r, 'static> for MemoryFile {
+    fn respond_to(self, req: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
+        let mut response = self.1.respond_to(req)?;
+        if let Some(ext) = self.0.extension() {
+            if let Some(ct) = rocket::http::ContentType::from_extension(&ext.to_string_lossy()) {
+                response.set_header(ct);
+            }
+        }
+
+        Ok(response)
+    }
+}
+
 #[get("/<path..>")]
-fn static_files(mut path: PathBuf) -> Result<RawHtml<&'static str>, Status> {
+fn static_files(mut path: PathBuf) -> Result<MemoryFile, Status> {
     lazy_static::lazy_static! {
-        static ref MAIN_PAGE: Vec<(PathBuf, String)> = {
+        static ref MAIN_PAGE: Vec<(PathBuf, &'static [u8])> = {
             let mut reader = sevenz_rust2::ArchiveReader::new(
                 std::io::Cursor::new(WEB_STATIC),
                 sevenz_rust2::Password::empty(),
             )
             .unwrap();
-            let mut pages: Vec<(PathBuf, String)> = vec![];
+            let mut pages: Vec<(PathBuf, &'static [u8])> = vec![];
             let _ = reader.for_each_entries(|entry, reader| {
                 if entry.is_directory() {
                     return Ok(true);
                 }
 
-                let mut buffer = String::new();
-                reader.read_to_string(&mut buffer).unwrap();
-                pages.push((PathBuf::from(entry.name()), buffer));
+                let mut buffer: Vec<u8> = vec![];
+                reader.read_to_end(&mut buffer).unwrap();
+                pages.push((PathBuf::from(entry.name()), Box::leak(Box::new(buffer))));
 
                 return Ok(true);
             });
@@ -101,7 +115,7 @@ fn static_files(mut path: PathBuf) -> Result<RawHtml<&'static str>, Status> {
     }
 
     return match MAIN_PAGE.iter().find(|(entry, _)| *entry == path) {
-        Some((_, data)) => Ok(RawHtml(data)),
+        Some((_, data)) => Ok(MemoryFile(path, data)),
         None => Err(Status { code: 404 }),
     };
 }
@@ -207,7 +221,9 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
                 launch_signal_tx.send(()).unwrap();
 
                 let local_port = rocket.config().port;
-                let _ = open::that(format!("http://127.0.0.1:{}/", local_port));
+                if !cfg!(debug_assertions) {
+                    let _ = open::that(format!("http://127.0.0.1:{}/", local_port));
+                }
                 let _ = port.send(local_port);
             })
         },
@@ -222,7 +238,7 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
 
         loop {
             fn handle_offline(time: &Instant) -> bool {
-                const TIMEOUT: u64 = if cfg!(debug_assertions) { 3 } else { 600 };
+                const TIMEOUT: u64 = if cfg!(debug_assertions) { 20 } else { 600 };
 
                 let timeout = Instant::now().duration_since(*time).as_secs();
                 if timeout >= TIMEOUT {
