@@ -57,10 +57,8 @@ lazy_static::lazy_static! {
             }
         }
 
-        if addresses.len() == 0 {
-            addresses.push(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
-            addresses.push(IpAddr::V6(Ipv6Addr::UNSPECIFIED));
-        }
+        addresses.push(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+        addresses.push(IpAddr::V6(Ipv6Addr::UNSPECIFIED));
 
         logging!("UI", "Local IP Addresses: {:?}", addresses);
         addresses
