@@ -4,7 +4,7 @@ use num_bigint::BigUint;
 use rand_core::{OsRng, TryRngCore};
 
 use crate::{
-    easytier::{Easytier, self},
+    easytier::{self, Easytier},
     fakeserver::{self, FakeServer},
 };
 
@@ -178,7 +178,6 @@ impl Room {
                 "tcp://turn.hb.629957.xyz:11010",
                 "tcp://turn.sc.629957.xyz:11010",
                 "tcp://8.148.29.206:11010",
-                "tcp://easytier.devnak.win:11010",
                 "tcp://turn.js.629957.xyz:11012",
                 "tcp://103.194.107.246:11010",
                 "tcp://sh.993555.xyz:11010",
