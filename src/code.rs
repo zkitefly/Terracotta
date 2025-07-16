@@ -228,16 +228,19 @@ impl Room {
                 vec![
                     "-d".to_string(),
                     format!(
-                        "--port-forward=tcp://0.0.0.0:{}/10.144.144.1:{}",
-                        LOCAL_PORT, self.port
-                    ),
-                    format!(
                         "--port-forward=tcp://[::0]:{}/10.144.144.1:{}",
                         LOCAL_PORT, self.port
                     ),
                 ]
             }),
         );
+
+        if socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None).unwrap().only_v6().unwrap() {
+            args.push(format!(
+                "--port-forward=tcp://0.0.0.0:{}/10.144.144.1:{}",
+                LOCAL_PORT, self.port
+            ));
+        }
 
         return (
             easytier::FACTORY.create(args),
