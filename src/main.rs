@@ -60,6 +60,7 @@ lazy_static::lazy_static! {
         addresses.push(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
         addresses.push(IpAddr::V6(Ipv6Addr::UNSPECIFIED));
 
+        addresses.sort_by(|ip1, ip2| ip2.cmp(ip1));
         logging!("UI", "Local IP Addresses: {:?}", addresses);
         addresses
     };
