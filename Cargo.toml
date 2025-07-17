@@ -1,6 +1,6 @@
 [package]
 name = "terracotta"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 edition = "2024"
 build = "build.rs"
 
@@ -17,7 +17,7 @@ num-bigint = "0.4.6"
 open = { version = "5.3.2", default-features = false }
 rand_core = { version = "0.9.3", features = ["os_rng"] }
 rocket = { version = "0.5.1", default-features = false, features = ["json"] }
-sevenz-rust2 = { version = "0.16.0", default-features = false, features = [
+sevenz-rust2 = { version = "0.16.2", default-features = false, features = [
     "util",
 ] }
 socket2 = "0.6.0"
