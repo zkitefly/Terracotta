@@ -93,8 +93,8 @@ fn download_easytier() {
                 desc: "macos-x86_64",
             },
             "aarch64" => EasytierFiles {
-                url: "https://github.com/EasyTier/EasyTier/releases/download/v2.3.2/easytier-linux-aarch64-v2.3.2.zip",
-                files: vec!["easytier-linux-aarch64/easytier-core"],
+                url: "https://github.com/EasyTier/EasyTier/releases/download/v2.3.2/easytier-macos-aarch64-v2.3.2.zip",
+                files: vec!["easytier-macos-aarch64/easytier-core"],
                 entry: "easytier-core",
                 desc: "macos-arm64",
             },
