@@ -3,12 +3,14 @@ use std::{
     io::{BufRead, BufReader, Cursor, Error, ErrorKind},
     path::{Path, PathBuf},
     process::{self, Command, Stdio},
+    sync::{Arc, Mutex, mpsc},
     thread,
+    time::Duration,
 };
 
 static EASYTIER_ARCHIVE: (&'static str, &'static [u8]) = (
-    include_str!(env!("TERRACOTTA_ET_ENTRY_CONF")), 
-    include_bytes!(env!("TERRACOTTA_ET_ARCHIVE"))
+    include_str!(env!("TERRACOTTA_ET_ENTRY_CONF")),
+    include_bytes!(env!("TERRACOTTA_ET_ARCHIVE")),
 );
 
 lazy_static::lazy_static! {
@@ -20,7 +22,7 @@ pub struct EasytierFactory {
 }
 
 pub struct Easytier {
-    process: process::Child,
+    process: Arc<Mutex<process::Child>>,
 }
 
 fn create() -> EasytierFactory {
@@ -40,7 +42,8 @@ fn create() -> EasytierFactory {
         .unwrap();
 
     let exe: PathBuf = Path::join(&dir, EASYTIER_ARCHIVE.0);
-    #[cfg(target_family="unix")] {
+    #[cfg(target_family = "unix")]
+    {
         use std::os::unix::fs::PermissionsExt;
         let mut permissions = fs::metadata(exe.clone()).unwrap().permissions();
         permissions.set_mode(permissions.mode() | 0o100);
@@ -69,37 +72,77 @@ impl EasytierFactory {
             .spawn()
             .unwrap();
 
-        let stdout = process.stdout.take().unwrap();
-        thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    logging!("Easytier Core/STDOUT", "{}", line);
-                }
-            }
-        });
+        let (sender, receiver) = mpsc::channel::<String>();
+        Self::pump_std(&sender, process.stdout.take().unwrap());
+        Self::pump_std(&sender, process.stderr.take().unwrap());
 
-        let stderr = process.stderr.take().unwrap();
+        let process: Arc<Mutex<process::Child>> = Arc::new(Mutex::new(process));
+        let process2 = process.clone();
+
         thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    logging!("Easytier Core/STDERR", "{}", line);
+            const LINES: usize = 500;
+            
+            let mut buffer: [Option<String>; LINES] = [const { None }; LINES];
+            let mut index = 0;
+
+            loop {
+                {
+                    let mut process = process2.lock().unwrap();
+                    if let Ok(value) = process.try_wait() {
+                        if let Some(_) = value {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                if let Ok(value) = receiver.try_recv() {
+                    buffer[index] = Some(value);
+                    index = (index + 1) % LINES;
+                }
+
+                thread::sleep(Duration::from_millis(100));
+            }
+
+            let mut output = String::from("Easytier has exit. Here's the logs:\n---------------");
+            for i in 0..LINES {
+                if let Some(value) = &buffer[(index + 1 + i) % LINES] {
+                    output.push('\n');
+                    output.push_str(&value);
                 }
             }
+            output.push_str("\n---------------");
+
+            logging!("Easytier Core", "{}", output);
         });
 
         return Easytier { process: process };
     }
+
+    fn pump_std<R: std::io::Read + std::marker::Send + 'static>(
+        sender: &mpsc::Sender<String>,
+        source: R,
+    ) {
+        let sender = sender.clone();
+        thread::spawn(move || {
+            let reader = BufReader::new(source);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    sender.send(line).unwrap();
+                }
+            }
+        });
+    }
 }
 
 impl Easytier {
-    pub fn kill(mut self) {
-        let _ = self.process.kill();
+    pub fn kill(self) {
+        let _ = self.process.lock().unwrap().kill();
     }
 
     pub fn is_alive(&mut self) -> bool {
-        if let Ok(value) = self.process.try_wait() {
+        if let Ok(value) = self.process.lock().unwrap().try_wait() {
             if let Some(_) = value {
                 return false;
             } else {
@@ -113,6 +156,6 @@ impl Easytier {
 
 impl Drop for Easytier {
     fn drop(&mut self) {
-        let _ = self.process.kill();
+        let _ = self.process.lock().unwrap().kill();
     }
 }
