@@ -40,6 +40,8 @@ lazy_static::lazy_static! {
         let mut addresses: Vec<IpAddr> = vec![];
 
         if let Ok(networks) = local_ip_address::list_afinet_netifas() {
+            logging!("UI", "Raw Local IP Addresses: {:?}", networks);
+            
             for (_, address) in networks.into_iter() {
                 match address {
                     IpAddr::V4(ip) => {
