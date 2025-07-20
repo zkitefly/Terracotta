@@ -128,11 +128,8 @@ fn main() {
                 copy_dir_all(source, artifact.join(format!("{}/terracotta.app", name)));
 
                 let file = artifact.join(format!("{}/terracotta.app/Contents/MacOS/terracotta", name));
-                fs::create_dir_all(&file).unwrap();
-                let r = fs::copy(target.locate(),  &file);
-                if r.is_err() && fs::metadata(file).is_err() {
-                    r.unwrap();
-                }
+                fs::create_dir_all(file.parent().unwrap()).unwrap();
+                fs::copy(target.locate(),  &file).unwrap();
             }
         }
     }
