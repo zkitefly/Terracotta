@@ -14,10 +14,7 @@ extern crate rocket;
 use lazy_static::lazy_static;
 
 use std::{
-    env, fs,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    sync::mpsc,
-    thread::spawn,
+    env, fs, io, net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::mpsc, thread::spawn
 };
 
 pub mod code;
@@ -94,6 +91,46 @@ lazy_static! {
 
 #[rocket::main]
 async fn main() {
+    fn wait<T>(obj: T) {
+        let mut buf = String::from("");
+        io::stdin().read_line(&mut buf).unwrap();
+        std::mem::drop(obj);
+    }
+
+    let arguments = env::args().skip(1).collect::<Vec<_>>();
+    match arguments.len() {
+        0 => main_auto().await,
+        1 if arguments[0] == "--auto" => main_auto().await,
+        2 => match arguments[0].as_str() {
+            "--server" => {
+                if let Ok(port) = arguments[1].parse::<u16>() {
+                    wait(code::Room::create(port).start());
+                } else {
+                    main_panic_msg(arguments, "Invalid room code");
+                }
+            },
+            "--client" => {
+                if let Ok(value) = code::Room::from(&arguments[1]) {
+                    wait(value.start());
+                } else {
+                    main_panic_msg(arguments, "Invalid port number");
+                }
+            }
+            _ => main_panic(arguments)
+        },
+        _ => main_panic(arguments)
+    };
+}
+
+fn main_panic(arguments: Vec<String>) {
+    panic!("Unknown arguments: {}", arguments.join(", "));
+}
+
+fn main_panic_msg(arguments: Vec<String>, msg: &'static str) {
+    panic!("{}: {}", msg, arguments.join(", "));
+}
+
+async fn main_auto() {
     let state = lock::get_state();
     match &state {
         lock::Single { .. } => {
