@@ -14,7 +14,11 @@ extern crate rocket;
 use lazy_static::lazy_static;
 
 use std::{
-    env, fs, io, net::{IpAddr, Ipv4Addr, Ipv6Addr}, sync::mpsc, thread::spawn
+    env, fs, io,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::mpsc,
+    thread,
+    time::SystemTime,
 };
 
 pub mod code;
@@ -38,7 +42,7 @@ lazy_static::lazy_static! {
 
         if let Ok(networks) = local_ip_address::list_afinet_netifas() {
             logging!("UI", "Raw Local IP Addresses: {:?}", networks);
-            
+
             for (_, address) in networks.into_iter() {
                 match address {
                     IpAddr::V4(ip) => {
@@ -66,31 +70,62 @@ lazy_static::lazy_static! {
 }
 
 lazy_static! {
-    static ref LOGGING_FILE: std::path::PathBuf = {
-        let base = if cfg!(target_os = "macos")
-            && let Ok(home) = env::var("HOME")
-        {
-            std::path::Path::new(&home).to_owned()
-        } else {
-            std::path::Path::new(&env::temp_dir()).to_owned()
-        };
-
+    static ref FILE_ROOT: std::path::PathBuf = if cfg!(target_os = "macos")
+        && let Ok(home) = env::var("HOME")
+    {
+        std::path::Path::new(&home).join("terracotta")
+    } else {
+        std::path::Path::new(&env::temp_dir()).join("terracotta")
+    };
+    static ref WORKING_DIR: std::path::PathBuf = {
         use chrono::{Datelike, Timelike};
         let now = chrono::Local::now();
-        base.join(format!(
-            "terracotta-log/{:04}-{:02}-{:02}-{:02}-{:02}-{:02}.log",
+
+        (*FILE_ROOT).join(format!(
+            "{:04}-{:02}-{:02}-{:02}-{:02}-{:02}-{}",
             now.year(),
             now.month(),
             now.day(),
             now.hour(),
             now.minute(),
-            now.second()
+            now.second(),
+            std::process::id()
         ))
     };
+    static ref LOGGING_FILE: std::path::PathBuf = WORKING_DIR.join("application.log");
+    static ref EASYTIER_DIR: std::path::PathBuf = WORKING_DIR.join("embedded-easytier");
 }
 
 #[rocket::main]
 async fn main() {
+    thread::spawn(move || {
+        let now = SystemTime::now();
+
+        if let Ok(value) = fs::read_dir(&*FILE_ROOT) {
+            for file in value {
+                if let Ok(file) = file
+                    && let Ok(metadata) = file.metadata()
+                    && let Ok(file_type) = file.file_type()
+                    && let Ok(time) = metadata.created()
+                    && let Ok(duration) = now.duration_since(time)
+                    && duration.as_secs()
+                        >= if cfg!(debug_assertions) {
+                            10
+                        } else {
+                            24 * 60 * 60
+                        }
+                    && let Err(e) = if file_type.is_dir() {
+                        fs::remove_dir_all(file.path())
+                    } else {
+                        fs::remove_file(file.path())
+                    }
+                {
+                    logging!("UI", "Cannot remove old file {:?}: {:?}", file.path(), e);
+                }
+            }
+        }
+    });
+
     fn wait<T>(obj: T) {
         let mut buf = String::from("");
         io::stdin().read_line(&mut buf).unwrap();
@@ -104,22 +139,37 @@ async fn main() {
         2 => match arguments[0].as_str() {
             "--server" => {
                 if let Ok(port) = arguments[1].parse::<u16>() {
-                    wait(code::Room::create(port).start());
+                    let room = code::Room::create(port);
+                    logging!(
+                        "UI",
+                        "Hosting Minecraft server, port = {}, room = {}.",
+                        port,
+                        room.code
+                    );
+                    wait(room.start());
                 } else {
                     main_panic_msg(arguments, "Invalid room code");
                 }
-            },
+            }
             "--client" => {
-                if let Ok(value) = code::Room::from(&arguments[1]) {
-                    wait(value.start());
+                if let Ok(room) = code::Room::from(&arguments[1]) {
+                    logging!(
+                        "UI",
+                        "Joining Minecraft server, port = {}, room = {}.",
+                        room.port,
+                        room.code
+                    );
+                    wait(room.start());
                 } else {
                     main_panic_msg(arguments, "Invalid port number");
                 }
             }
-            _ => main_panic(arguments)
+            _ => main_panic(arguments),
         },
-        _ => main_panic(arguments)
+        _ => main_panic(arguments),
     };
+
+    easytier::FACTORY.drop_in_place();
 }
 
 fn main_panic(arguments: Vec<String>) {
@@ -140,7 +190,7 @@ async fn main_auto() {
             let tx2 = tx.clone();
 
             let future = main_server(tx);
-            spawn(move || {
+            thread::spawn(move || {
                 let port = rx.recv().unwrap();
                 if port != 0 {
                     state.set_port(port);
@@ -171,11 +221,13 @@ async fn main_server(port: mpsc::Sender<u16>) {
     redirect_std(&*LOGGING_FILE);
 
     let future = server::server_main(port);
-    let _ = Box::new(&*easytier::FACTORY);
+    thread::spawn(|| {
+        let _ = &*easytier::FACTORY;
+    });
     future.await;
 }
 
-fn redirect_std(file: &std::path::PathBuf) {
+fn redirect_std(file: &'static std::path::PathBuf) {
     let is_enable = env::args().into_iter().any(|e| &e == "--redirect-std=yes");
     let is_disable = env::args().into_iter().any(|e| &e == "--redirect-std=no");
 
