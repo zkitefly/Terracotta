@@ -64,6 +64,16 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain nightly-x86_64-unknown-linux-gnu
           echo PATH=$PATH:$HOME/.cargo/bin >> $GITHUB_ENV
         fi
+    - name: Generate Cache Key
+      run: cargo generate-lockfile
+    - name: Cache Cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Install Rust Toolchains
       run: |
         rustup target add --toolchain nightly $(echo "$targets" | tr '\n' ' ')
