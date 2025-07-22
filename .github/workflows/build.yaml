@@ -119,6 +119,8 @@ jobs:
       with:
         name: terracotta.zip
         path: inputs
+    - name: Install Dependencies
+      uses: lhotari/gh-actions-artifact-client@v2
     - name: Transform Artifact
       run: |
         TEMP_DIR=$(mktemp -d)
@@ -157,10 +159,8 @@ jobs:
         rm -rf "$TEMP_DIR"
 
         ls -R
-        cd ..
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: terracotta.zip
-        path: artifacts
-        overwrite: true
+        
+        ARTIFACTS=($(find . -mindepth 1 -maxdepth 1 -type f))
+        for ARTIFACT in "${ARTIFACTS[@]}"; do
+          cat "$ARTIFACT" | gh-actions-artifact-client.js upload $(basename "$ARTIFACT")
+        done
