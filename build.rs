@@ -39,11 +39,11 @@ fn main() {
         compiler.compile().unwrap();
     }
 
-    // if let Ok(value) = get_var(&format!("CARGO_TARGET_{}_RUSTFLAGS", desc)) {
-    //     for ele in value.split(" ") {
-    //         println!("cargo::rustc-link-arg={}", ele)
-    //     }
-    // }
+    for (key, value) in env::vars() {
+        if key.starts_with("CARGO_CFG_") {
+            println!("cargo::rustc-env={}={}", key, value);
+        }
+    }
 }
 
 fn download_easytier() {

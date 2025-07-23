@@ -194,6 +194,24 @@ fn download_log() -> std::fs::File {
     return std::fs::File::open((*LOGGING_FILE).clone()).unwrap();
 }
 
+#[get("/meta")]
+fn get_meta() -> json::Json<json::Value> {
+    return json::Json(json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "target_tuple": format!(
+            "{}-{}-{}-{}",
+            env!("CARGO_CFG_TARGET_ARCH"),
+            env!("CARGO_CFG_TARGET_VENDOR"),
+            env!("CARGO_CFG_TARGET_OS"),
+            env!("CARGO_CFG_TARGET_ENV"),
+         ),
+        "target_arch": env!("CARGO_CFG_TARGET_ARCH"),
+        "target_vendor": env!("CARGO_CFG_TARGET_VENDOR"),
+        "target_os": env!("CARGO_CFG_TARGET_OS"),
+        "target_env": env!("CARGO_CFG_TARGET_ENV"),
+    }));
+}
+
 pub async fn server_main(port: mpsc::Sender<u16>) {
     let (launch_signal_tx, launch_signal_rx) = mpsc::channel::<()>();
     let shutdown_signal_tx = launch_signal_tx.clone();
@@ -212,6 +230,7 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
             set_state_guesting,
             download_log,
             static_files,
+            get_meta,
         ],
     )
     .attach(rocket::fairing::AdHoc::on_liftoff(

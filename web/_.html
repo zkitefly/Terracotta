@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Terracotta | 陶瓦 - Minecraft联机助手</title>
+    <title id="web-title">Terracotta | 陶瓦联机</title>
     <link rel="stylesheet" href="font-awesome.css">
     <style>
         @font-face {
@@ -463,10 +463,9 @@
         }
 
         @keyframes loading {
-
             0%,
             100% {
-                transform: scale(1);
+                transform: scale(1.2);
             }
 
             50% {
@@ -552,7 +551,7 @@
 <body>
     <div class="container">
         <header>
-            <h1 style="font-weight: bold;" id="title">Terracotta | 陶瓦</h1>
+            <h1 style="font-weight: bold;" id="page-title">Terracotta | 陶瓦联机</h1>
             <div class="subtitle">基于 EasyTier 的 Minecraft 联机助手</div>
         </header>
 
@@ -672,10 +671,14 @@
     </div>
     <footer>
         <p>需要帮助？<a class="qq-url" href="https://docs.hmcl.net/groups.html">加入 QQ 群</a></p>
-        <p>Terracotta | 陶瓦 - 让 Minecraft 联机更简单</p>
+        <p id="web-foot">Terracotta | 陶瓦联机</p>
     </footer>
     <script>
-        document.getElementById("title").addEventListener("click", (function () {
+        fetch("/meta").then(r => r.json()).then(r => {
+            document.getElementById("web-foot").innerText = "Terracotta | 陶瓦联机 " + r.version + " " + r.target_tuple;
+        });
+
+        document.getElementById("page-title").addEventListener("click", (function () {
             let previous = 0;
 
             return ev => {
