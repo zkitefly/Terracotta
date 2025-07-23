@@ -774,14 +774,15 @@
         document.getElementById('guest-tile').addEventListener('click', () => {
             showView('guest-input-view');
             document.getElementById("invite-code-input").value = "";
-            document.getElementById("invite-code-code-hint").innerText = "没有邀请码？请创建房间。";
-            document.getElementById("input-hint").style = "";
+            document.getElementById("invite-code-input-hint").style = "没有邀请码？请创建房间。";
+            document.getElementById("invite-code-input-hint").innerText = "";
         });
 
         document.getElementById("join-button").addEventListener("click", () => {
-            showView("guest-loading-view");
             fetch("/state/guesting?room=" + document.getElementById('invite-code-input').value).then(r => {
-                if (r.status == 400) {
+                if (r.status == 200) {
+                    showView("guest-loading-view");
+                } else if (r.status == 400) {
                     showView('guest-input-view');
                     document.getElementById("invite-code-input-hint").innerText = "邀请码格式错误";
                     document.getElementById("invite-code-input-hint").style = "color: orange; font-weight: bold;";
