@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 use rocket::http::Status;
 use rocket::serde::json;
 
-use crate::LOGGING_FILE;
+use crate::{time, LOGGING_FILE};
 use crate::code::{self, Room};
 use crate::easytier::Easytier;
 use crate::fakeserver::FakeServer;
@@ -35,7 +35,7 @@ lazy_static::lazy_static! {
     static ref GLOBAL_STATE: Mutex<(u32, AppState)> = Mutex::new((
         0,
         AppState::Waiting {
-            begin: SystemTime::now(),
+            begin: time::now(),
         }
     ));
 }
@@ -44,10 +44,10 @@ fn access_state() -> std::sync::MutexGuard<'static, (u32, AppState)> {
     let mut guard = GLOBAL_STATE.lock().unwrap();
     match &mut (*guard).1 {
         AppState::Waiting { begin } => {
-            *begin = SystemTime::now();
+            *begin = time::now();
         }
         AppState::Scanning { begin, .. } => {
-            *begin = SystemTime::now();
+            *begin = time::now();
         }
         _ => {}
     }
@@ -146,7 +146,7 @@ fn set_state_ide() -> Status {
     let state = &mut *access_state();
     state.0 += 1;
     state.1 = AppState::Waiting {
-        begin: SystemTime::now(),
+        begin: time::now(),
     };
     return Status::Ok;
 }
@@ -158,7 +158,7 @@ fn set_state_scanning() -> Status {
     let state = &mut *access_state();
     state.0 += 1;
     state.1 = AppState::Scanning {
-        begin: SystemTime::now(),
+        begin: time::now(),
         scanner: Scanning::create(|motd| motd != code::MOTD),
     };
     return Status::Ok;
@@ -260,7 +260,7 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
             fn handle_offline(time: &SystemTime) -> bool {
                 const TIMEOUT: u64 = if cfg!(debug_assertions) { 20 } else { 600 };
 
-                if let Ok(timeout) = SystemTime::now().duration_since(*time) {
+                if let Ok(timeout) = time::now().duration_since(*time) {
                     let timeout = timeout.as_secs();
                     if timeout >= TIMEOUT {
                         logging!(
@@ -314,7 +314,7 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
                         logging!("UI", "Easytier has been dead.");
                         state.0 += 1;
                         state.1 = AppState::Waiting {
-                            begin: SystemTime::now(),
+                            begin: time::now(),
                         };
                     }
                 }
@@ -323,7 +323,7 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
                         logging!("UI", "Easytier has been dead.");
                         state.0 += 1;
                         state.1 = AppState::Waiting {
-                            begin: SystemTime::now(),
+                            begin: time::now(),
                         };
                     }
                 }

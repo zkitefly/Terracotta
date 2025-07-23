@@ -18,7 +18,6 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::mpsc,
     thread,
-    time::SystemTime,
 };
 
 pub mod code;
@@ -26,6 +25,7 @@ pub mod easytier;
 pub mod fakeserver;
 pub mod scanning;
 pub mod server;
+pub mod time;
 
 #[cfg(target_family = "windows")]
 pub mod lock_windows;
@@ -99,7 +99,7 @@ lazy_static! {
 #[rocket::main]
 async fn main() {
     thread::spawn(move || {
-        let now = SystemTime::now();
+        let now = time::now();
 
         if let Ok(value) = fs::read_dir(&*FILE_ROOT) {
             for file in value {
