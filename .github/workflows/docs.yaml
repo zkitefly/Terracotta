@@ -10,6 +10,7 @@ permissions:
   contents: write
 jobs:
   deploy:
+    if: ${{ github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
