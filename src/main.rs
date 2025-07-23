@@ -287,7 +287,7 @@ fn redirect_std(file: &'static std::path::PathBuf) {
 
     logging!(
         "UI",
-        "Logs will be saved to {}. There will be not information on the console.",
+        "There will be not information on the console. Logs will be saved to {}",
         file.to_str().unwrap()
     );
 
