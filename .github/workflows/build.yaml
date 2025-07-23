@@ -62,7 +62,9 @@ jobs:
           .easytier
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Install cargo-zigbuild
-      run: cargo install --locked cargo-zigbuild
+      uses: taiki-e/cache-cargo-install-action@v2
+      with:
+        tool: cargo-zigbuild
     - name: Install Rust Toolchains
       run: |
         rustup target add --toolchain nightly $(echo "$targets" | tr '\n' ' ')
