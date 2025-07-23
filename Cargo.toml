@@ -4,6 +4,9 @@ version = "0.3.0"
 edition = "2024"
 build = "build.rs"
 
+[package.metadata.easytier]
+version = "v2.3.2"
+
 [workspace.package]
 version = "0.3.0"
 
@@ -39,6 +42,7 @@ reqwest = { version = "0.12.22", default-features = false, features = [
     "rustls-tls", "charset", "http2", "system-proxy", "blocking"
 ] }
 zip = "4.3.0"
+toml = "0.9.2"
 
 [profile.release]
 strip = true

@@ -198,6 +198,7 @@ fn download_log() -> std::fs::File {
 fn get_meta() -> json::Json<json::Value> {
     return json::Json(json::json!({
         "version": env!("CARGO_PKG_VERSION"),
+        "easytier_version": env!("TERRACOTTA_ET_VERSION"),
         "target_tuple": format!(
             "{}-{}-{}-{}",
             env!("CARGO_CFG_TARGET_ARCH"),

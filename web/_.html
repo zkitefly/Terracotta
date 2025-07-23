@@ -675,7 +675,8 @@
     </footer>
     <script>
         fetch("/meta").then(r => r.json()).then(r => {
-            document.getElementById("web-foot").innerText = "Terracotta | 陶瓦联机 " + r.version + " " + r.target_tuple;
+            document.getElementById("web-foot").innerText = 
+                `Terracotta | 陶瓦联机 ${r.version} ${r.target_tuple}, EasyTier ${r.easytier_version}`;
         });
 
         document.getElementById("page-title").addEventListener("click", (function () {

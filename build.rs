@@ -54,7 +54,21 @@ fn download_easytier() {
         desc: &'static str,
     }
 
-    const VERSION: &'static str = "v2.3.2";
+    let version = {
+        let mut input = fs::read_to_string(Path::new(&get_var("CARGO_MANIFEST_DIR").unwrap()).join("Cargo.toml"))
+            .unwrap()
+            .parse::<toml::Table>()
+            .unwrap();
+
+        for key in "package.metadata.easytier".split(".") {
+            input = match input.into_iter().find(|(k, _)| k == key).unwrap().1 {
+                toml::Value::Table(map) => map,
+                _ => panic!("Expecting a table for key: {}", key),
+            }
+        }
+
+        input.get("version").unwrap().as_str().unwrap().to_string()
+    };
 
     let target_os = get_var("CARGO_CFG_TARGET_OS").unwrap().to_string();
     let target_arch = get_var("CARGO_CFG_TARGET_ARCH").unwrap().to_string();
@@ -117,7 +131,7 @@ fn download_easytier() {
 
     let base = Path::new(&get_var("CARGO_MANIFEST_DIR").unwrap())
         .join(".easytier")
-        .join(VERSION)
+        .join(&version)
         .join(conf.desc);
     let entry_conf = base.clone().join("entry-conf.v1.txt");
     let entry_archive = base.clone().join("easytier.7z");
@@ -129,6 +143,7 @@ fn download_easytier() {
         "cargo::rustc-env=TERRACOTTA_ET_ARCHIVE={}",
         entry_archive.as_path().to_str().unwrap().to_string()
     );
+    println!("cargo::rustc-env=TERRACOTTA_ET_VERSION={}", version);
 
     if fs::metadata(entry_conf.clone()).is_ok() {
         return;
@@ -142,7 +157,7 @@ fn download_easytier() {
     let source =
         Path::new(&env::temp_dir()).join(format!("terracotta-build-rs-{}.zip", process::id()));
 
-    let result = reqwest::blocking::get(conf.url.replace("{V}", VERSION))
+    let result = reqwest::blocking::get(conf.url.replace("{V}", &version))
         .unwrap()
         .copy_to(&mut io::BufWriter::new(
             fs::File::create(source.clone()).unwrap(),
@@ -187,7 +202,12 @@ fn download_easytier() {
     fs::write(entry_conf, conf.entry).unwrap();
 }
 
-pub fn get_var<K: core::convert::AsRef<std::ffi::os_str::OsStr>>(key: K) -> core::result::Result<String, std::env::VarError> {
-    println!("cargo::rerun-if-env-changed={}", key.as_ref().to_string_lossy());
+pub fn get_var<K: core::convert::AsRef<std::ffi::os_str::OsStr>>(
+    key: K,
+) -> core::result::Result<String, std::env::VarError> {
+    println!(
+        "cargo::rerun-if-env-changed={}",
+        key.as_ref().to_string_lossy()
+    );
     return env::var(key.as_ref());
 }
