@@ -30,11 +30,11 @@ pub mod server;
 #[cfg(target_family = "windows")]
 pub mod lock_windows;
 #[cfg(target_family = "windows")]
-use lock_windows::State as lock;
+use lock_windows::State as Lock;
 #[cfg(target_family = "unix")]
 pub mod lock_unix;
 #[cfg(target_family = "unix")]
-use lock_unix::State as lock;
+use lock_unix::State as Lock;
 
 lazy_static::lazy_static! {
     static ref ADDRESSES: Vec<IpAddr> = {
@@ -135,7 +135,21 @@ async fn main() {
     let arguments = env::args().skip(1).collect::<Vec<_>>();
     match arguments.len() {
         0 => main_auto().await,
-        1 if arguments[0] == "--auto" => main_auto().await,
+        1 => match arguments[0].as_str() {
+            "--auto" => main_auto().await,
+            "--single" => main_single(None).await,
+            "--help" => {
+                println!("Welcoming using Terracotta | 陶瓦联机");
+                println!("Usage: terracotta [OPTIONS]");
+                println!("Options:");
+                println!("  --auto: Automatically determine the mode to run.");
+                println!("  --single: Forcely run in single server mode.");
+                println!("  --secondary <port>: Forcely run in secondary mode, opening an UI on the specified port.");
+                println!("  --server <port>: Host a Terracotta Room on the specified port.");
+                println!("  --client <room_code>: Join a Terracotta Room with the specified room code.");   
+            },
+            _ => main_panic(arguments),
+        },
         2 => match arguments[0].as_str() {
             "--server" => {
                 if let Ok(port) = arguments[1].parse::<u16>() {
@@ -147,10 +161,12 @@ async fn main() {
                         room.code
                     );
                     wait(room.start());
+
+                    easytier::FACTORY.drop_in_place();
                 } else {
                     main_panic_msg(arguments, "Invalid room code");
                 }
-            }
+            },
             "--client" => {
                 if let Ok(room) = code::Room::from(&arguments[1]) {
                     logging!(
@@ -160,71 +176,86 @@ async fn main() {
                         room.code
                     );
                     wait(room.start());
+
+                    easytier::FACTORY.drop_in_place();
                 } else {
                     main_panic_msg(arguments, "Invalid port number");
                 }
-            }
+            },
+            "--secondary" => {
+                if let Ok(port) = arguments[1].parse::<u16>() {
+                    main_secondary(port);
+                } else {
+                    main_panic_msg(arguments, "Invalid port number");
+                }
+            },
             _ => main_panic(arguments),
         },
         _ => main_panic(arguments),
     };
-
-    easytier::FACTORY.drop_in_place();
 }
 
 fn main_panic(arguments: Vec<String>) {
-    panic!("Unknown arguments: {}", arguments.join(", "));
+    logging!("UI", "Unknown arguments: {}", arguments.join(", "));
 }
 
 fn main_panic_msg(arguments: Vec<String>, msg: &'static str) {
-    panic!("{}: {}", msg, arguments.join(", "));
+    logging!("UI", "{}: {}", msg, arguments.join(", "));
 }
 
 async fn main_auto() {
-    let state = lock::get_state();
+    let state = Lock::get_state();
     match &state {
-        lock::Single { .. } => {
+        Lock::Single { .. } => {
             logging!("UI", "Running in server mode.");
-
-            let (tx, rx) = mpsc::channel::<u16>();
-            let tx2 = tx.clone();
-
-            let future = main_server(tx);
-            thread::spawn(move || {
-                let port = rx.recv().unwrap();
-                if port != 0 {
-                    state.set_port(port);
-                }
-            });
-
-            future.await;
-            let _ = tx2.send(0);
+            main_single(Some(state)).await;
         }
-        lock::Secondary { port } => {
+        Lock::Secondary { port } => {
             logging!("UI", "Running in secondary mode, port={}.", port);
 
-            let _ = open::that(format!("http://127.0.0.1:{}/", port));
+            main_secondary(*port);
         }
-        lock::Unknown => {
+        Lock::Unknown => {
             logging!(
                 "UI",
                 "Cannot determin application mode. Fallback to server mode."
             );
 
-            let (tx, _) = mpsc::channel::<u16>();
-            main_server(tx).await;
+            main_single(None).await;
         }
     };
 }
 
-async fn main_server(port: mpsc::Sender<u16>) {
+async fn main_single(state: Option<Lock>) {
     redirect_std(&*LOGGING_FILE);
 
-    let future = server::server_main(port);
+    let (tx, rx) = mpsc::channel::<u16>();
+    let tx2 = tx.clone();
+
+    let future = server::server_main(tx);
     thread::spawn(|| {
         let _ = &*easytier::FACTORY;
     });
+
+    if let Some(state) = state {
+        thread::spawn(move || {
+            let port = rx.recv().unwrap();
+            if port != 0 {
+                state.set_port(port);
+            }
+        });
+    }
+
     future.await;
+    let _ = tx2.send(0);
+
+    easytier::FACTORY.drop_in_place();
+}
+
+fn main_secondary(port: u16) {
+    logging!("UI", "Running in secondary mode, port={}.", port);
+
+    let _ = open::that(format!("http://127.0.0.1:{}/", port));
 }
 
 fn redirect_std(file: &'static std::path::PathBuf) {
