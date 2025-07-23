@@ -1,4 +1,5 @@
 use core::panic;
+use std::net::{Ipv4Addr, UdpSocket};
 
 use num_bigint::BigUint;
 use rand_core::{OsRng, TryRngCore};
@@ -18,7 +19,6 @@ pub struct Room {
 }
 
 pub const MOTD: &'static str = "§6§l陶瓦联机大厅（请保持陶瓦运行并关闭其他代理软件）";
-pub const LOCAL_PORT: u16 = 35781;
 
 static CHARS: &[u8] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ".as_bytes();
 
@@ -203,6 +203,14 @@ impl Room {
             ]);
         }
 
+        let port = if let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
+            && let Ok(address) = socket.local_addr()
+        {
+            address.port()
+        } else {
+            35781
+        };
+
         let mut args = vec![
             "--network-name".to_string(),
             format!(
@@ -229,7 +237,7 @@ impl Room {
                     "-d".to_string(),
                     format!(
                         "--port-forward=tcp://[::0]:{}/10.144.144.1:{}",
-                        LOCAL_PORT, self.port
+                        port, self.port
                     ),
                 ]
             }),
@@ -256,7 +264,7 @@ impl Room {
         if *ONLY_V6 {
             args.push(format!(
                 "--port-forward=tcp://0.0.0.0:{}/10.144.144.1:{}",
-                LOCAL_PORT, self.port
+                port, self.port
             ));
         }
 
@@ -265,9 +273,7 @@ impl Room {
             if self.host {
                 None
             } else {
-                let s = fakeserver::create(MOTD.to_string());
-                s.set_port(LOCAL_PORT);
-                Some(s)
+                Some(fakeserver::create(port, MOTD.to_string()))
             },
         );
     }

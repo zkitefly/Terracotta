@@ -26,7 +26,7 @@ enum AppState {
     },
     Guesting {
         easytier: Easytier,
-        _entry: FakeServer,
+        server: FakeServer,
         _room: Room,
     },
 }
@@ -131,10 +131,10 @@ fn get_state() -> json::Json<json::Value> {
             "index": v.0,
             "room": room.code
         })),
-        AppState::Guesting { .. } => json::Json(json::json!({
+        AppState::Guesting { server, .. } => json::Json(json::json!({
             "state": "guesting",
             "index": v.0,
-            "url": format!("127.0.0.1:{}", code::LOCAL_PORT)
+            "url": format!("127.0.0.1:{}", server.port)
         })),
     };
 }
@@ -180,7 +180,7 @@ fn set_state_guesting(room: Option<String>) -> Status {
         let (easytier, entry) = room.start();
         state.1 = AppState::Guesting {
             easytier: easytier,
-            _entry: entry.unwrap(),
+            server: entry.unwrap(),
             _room: room,
         };
         return Status::Ok;

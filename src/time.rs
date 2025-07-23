@@ -6,9 +6,7 @@ pub fn now() -> SystemTime {
     #[cfg(target_family = "windows")]
     #[allow(dead_code)]
     {
-        if cfg!(debug_assertions) && size_of::<SystemTime0>() != size_of::<SystemTime>() {
-            panic!("SystemTime size mismatch: expected {}, got {}", size_of::<SystemTime>(), size_of::<SystemTime0>());
-        }
+        debug_assert_eq!(size_of::<SystemTime>(), size_of::<SystemTime0>());
         
         use winapi::shared::minwindef::FILETIME;
         use winapi::um::sysinfoapi::GetSystemTimeAsFileTime;

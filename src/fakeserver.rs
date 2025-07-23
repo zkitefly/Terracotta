@@ -4,30 +4,19 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
-const SIG_TERMINAL: u32 = 65536 + 1;
-const SIG_PARSE: u32 = 65536 + 2;
-
 pub struct FakeServer {
-    signal: Sender<u32>,
+    pub port: u16,
+    signal: Sender<()>,
 }
 
-pub fn create(motd: String) -> FakeServer {
-    let (tx, rx): (Sender<u32>, Receiver<u32>) = mpsc::channel();
-    thread::spawn(move || {
-        let result = run(motd, rx);
+pub fn create(port: u16, motd: String) -> FakeServer {
+    let (tx, rx) = mpsc::channel::<()>();
+    thread::spawn(move || run(port, motd, rx));
 
-        match result {
-            Ok(_) => {}
-            Err(err) => {
-                logging!("FakeServer", "Cannot launch Fake Server: {}", err);
-            }
-        }
-    });
-
-    return FakeServer { signal: tx };
+    return FakeServer { port: port, signal: tx };
 }
 
-fn run(motd: String, signal: Receiver<u32>) -> Result<()> {
+fn run(port: u16, motd: String, signal: Receiver<()>) {
     let sockets: Vec<(UdpSocket, &'static SocketAddr)> = crate::ADDRESSES
         .iter()
         .map(|address| {
@@ -63,55 +52,24 @@ fn run(motd: String, signal: Receiver<u32>) -> Result<()> {
         })
         .collect();
 
-    let mut message: String = "".to_owned();
-    let mut message_bytes = message.as_bytes();
+    let message: String = format!("[MOTD]{}[/MOTD][AD]{}[/AD]", motd, port);
+    let message_bytes = message.as_bytes();
 
     loop {
-        if let Ok(value) = signal.recv_timeout(Duration::from_millis(1000)) {
-            match value {
-                1..=65536 => {
-                    logging!(
-                        "Fake Server",
-                        "Faking server with PORT={}, MOTD={}",
-                        value as u16,
-                        motd
-                    );
-                    message = format!("[MOTD]{}[/MOTD][AD]{}[/AD]", motd, value as u16);
-                    message_bytes = message.as_bytes();
-                }
-                SIG_TERMINAL => {
-                    logging!("Fake Server", "Stopped");
-                    return Ok(());
-                }
-                SIG_PARSE => {
-                    logging!("Fake Server", "Paused");
-                    message = "".to_owned();
-                    message_bytes = message.as_bytes();
-                }
-                _ => panic!("Unknown signal {}.", value),
-            }
+        if let Ok(_) = signal.try_recv() {
+            break;
         }
 
-        if message_bytes.len() > 0 {
-            for (socket, address) in sockets.iter() {
-                let _ = socket.send_to(message_bytes, address);
-            }
+        for (socket, address) in sockets.iter() {
+            let _ = socket.send_to(message_bytes, address);
         }
-    }
-}
 
-impl FakeServer {
-    pub fn set_port(&self, port: u16) {
-        let _ = self.signal.send(port as u32);
-    }
-
-    pub fn stop_broadcast(&self) {
-        let _ = self.signal.send(SIG_PARSE);
+        thread::sleep(Duration::from_millis(1500));
     }
 }
 
 impl Drop for FakeServer {
     fn drop(&mut self) {
-        let _ = self.signal.send(SIG_TERMINAL);
+        let _ = self.signal.send(());
     }
 }
