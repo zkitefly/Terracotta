@@ -20,13 +20,6 @@ fn main() {
                 self.toolchain, self.executable
             ));
         }
-
-        pub fn open(&self) -> fs::File {
-            return fs::OpenOptions::new()
-                .read(true)
-                .open(self.locate())
-                .unwrap();
-        }
     }
 
     let targets: Vec<Target> = vec![
