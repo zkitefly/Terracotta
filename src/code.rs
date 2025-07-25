@@ -168,39 +168,29 @@ impl Room {
 
     pub fn start(&self) -> (Easytier, Option<FakeServer>) {
         lazy_static::lazy_static! {
-            static ref configs: (Vec<&'static str>, Vec<&'static str>) = (vec![
+            static ref REPLAY_SERVERS: Vec<&'static str> = vec![
                 "tcp://public.easytier.top:11010",
-                "tcp://8.138.6.53:11010",
-                "tcp://119.23.65.180:11010",
                 "tcp://ah.nkbpal.cn:11010",
                 "tcp://gz.minebg.top:11010",
-                "tcp://39.108.52.138:11010",
                 "tcp://turn.hb.629957.xyz:11010",
                 "tcp://turn.sc.629957.xyz:11010",
-                "tcp://8.148.29.206:11010",
                 "tcp://turn.js.629957.xyz:11012",
-                "tcp://103.194.107.246:11010",
                 "tcp://sh.993555.xyz:11010",
-                "tcp://et.993555.xyz:11010",
                 "tcp://turn.bj.629957.xyz:11010",
                 "tcp://et.sh.suhoan.cn:11010",
-                "tcp://96.9.229.212:11010",
                 "tcp://et-hk.clickor.click:11010",
-                "tcp://47.113.227.73:11010",
                 "tcp://et.01130328.xyz:11010",
                 "tcp://et.ie12vps.xyz:11010",
-                "tcp://103.40.14.90:35971",
-                "tcp://154.9.255.133:11010",
-                "tcp://47.103.35.100:11010",
                 "tcp://et.gbc.moe:11011",
-                "tcp://116.206.178.250:11010",
-            ], vec![
+            ];
+
+            static ref DEFAULT_ARGUMENTS: Vec<&'static str> = vec![
                 "--no-tun",
                 "--compression=zstd",
                 "--multi-thread",
                 "--latency-first",
                 "--enable-kcp-proxy",
-            ]);
+            ];
         }
 
         let port = if let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
@@ -221,27 +211,24 @@ impl Room {
             String::from_utf8_lossy(&self.secret).to_ascii_lowercase(),
         ];
 
-        args.extend(
-            configs
-                .0
-                .iter()
-                .flat_map(|s| vec!["-p".to_string(), s.to_string()]),
-        );
-        args.extend(configs.1.iter().map(|n| n.to_string()));
+        for replay in REPLAY_SERVERS.iter() {
+            args.push("-p".to_string());
+            args.push(replay.to_string());
+        }
+        for arg in DEFAULT_ARGUMENTS.iter() {
+            args.push(arg.to_string());
+        }
 
-        args.append(
-            &mut (if self.host {
-                vec!["--ipv4".to_string(), "10.144.144.1".to_string()]
-            } else {
-                vec![
-                    "-d".to_string(),
-                    format!(
-                        "--port-forward=tcp://[::0]:{}/10.144.144.1:{}",
-                        port, self.port
-                    ),
-                ]
-            }),
-        );
+        if self.host {
+            args.push("--ipv4".to_string());
+            args.push("10.144.144.1".to_string());
+        } else {
+            args.push("-d".to_string());
+            args.push(format!(
+                "--port-forward=tcp://[::0]:{}/10.144.144.1:{}",
+                port, self.port
+            ));
+        }
 
         lazy_static::lazy_static! {
             static ref ONLY_V6: bool = {
