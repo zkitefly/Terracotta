@@ -757,6 +757,8 @@
                             let err;
                             if (r.type == 0) {
                                 err = { "title": "加入房间失败", "desc": "房间已关闭或网络不稳定" };
+                            } else if (r.type == 1) {
+                                err = { "title": "房间连接断开", "desc": "房间已关闭或网络不稳定" };
                             } else if (r.type == 2) {
                                 err = { "title": "加入房间失败", "desc": "EasyTier 已崩溃，请向开发者反馈该问题"};
                             } else if (r.type == 3) {
