@@ -79,19 +79,19 @@ impl EasytierFactory {
 
         thread::spawn(move || {
             const LINES: usize = 500;
-            
+
             let mut buffer: [Option<String>; LINES] = [const { None }; LINES];
             let mut index = 0;
 
-            loop {
+            let status = loop {
                 {
                     let mut process = process2.lock().unwrap();
                     if let Ok(value) = process.try_wait() {
                         if let Some(_) = value {
-                            break;
+                            break value;
                         }
                     } else {
-                        break;
+                        break None;
                     }
                 }
 
@@ -101,9 +101,21 @@ impl EasytierFactory {
                 }
 
                 thread::sleep(Duration::from_millis(100));
-            }
+            };
 
-            let mut output = String::from("Easytier has exit. Here's the logs:\n---------------");
+            let mut output = String::from("Easytier has exit with status {");
+            output += &match status {
+                Some(status) => format!(
+                    "code={}, success={}",
+                    status
+                        .code()
+                        .map(|i| i.to_string())
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    status.success()
+                ),
+                None => "unknown".to_string(),
+            };
+            output.push_str("}. Here's the logs:\n---------------");
             for i in 0..LINES {
                 if let Some(value) = &buffer[(index + 1 + i) % LINES] {
                     output.push('\n');

@@ -1,16 +1,18 @@
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::PathBuf;
 use std::sync::{Mutex, mpsc};
-use std::thread;
 use std::time::{Duration, SystemTime};
+use std::{mem, thread};
 
 use rocket::http::Status;
 use rocket::serde::json;
+use socket2::{Domain, SockAddr, Socket, Type};
 
-use crate::{time, LOGGING_FILE};
 use crate::code::{self, Room};
 use crate::easytier::Easytier;
 use crate::fakeserver::FakeServer;
 use crate::scanning::Scanning;
+use crate::{LOGGING_FILE, time};
 
 enum AppState {
     Waiting {
@@ -27,9 +29,18 @@ enum AppState {
     Guesting {
         easytier: Easytier,
         server: FakeServer,
-        _room: Room,
+        ok: bool,
+    },
+    Exception {
+        begin: SystemTime,
+        kind: u8,
     },
 }
+
+const EXCEPTION_KIND_PING_HOST_FAIL: u8 = 0;
+const EXCEPTION_KIND_PING_HOST_RST: u8 = 1;
+const EXCEPTION_KIND_GUEST_ET_CRASH: u8 = 2;
+const EXCEPTION_KIND_HOST_ET_CRASH: u8 = 3;
 
 lazy_static::lazy_static! {
     static ref GLOBAL_STATE: Mutex<(u32, AppState)> = Mutex::new((
@@ -47,6 +58,9 @@ fn access_state() -> std::sync::MutexGuard<'static, (u32, AppState)> {
             *begin = time::now();
         }
         AppState::Scanning { begin, .. } => {
+            *begin = time::now();
+        }
+        AppState::Exception { begin, .. } => {
             *begin = time::now();
         }
         _ => {}
@@ -131,10 +145,16 @@ fn get_state() -> json::Json<json::Value> {
             "index": v.0,
             "room": room.code
         })),
-        AppState::Guesting { server, .. } => json::Json(json::json!({
+        AppState::Guesting { server, ok, .. } => json::Json(json::json!({
             "state": "guesting",
             "index": v.0,
-            "url": format!("127.0.0.1:{}", server.port)
+            "url": format!("127.0.0.1:{}", server.port),
+            "ok": ok
+        })),
+        AppState::Exception { kind, .. } => json::Json(json::json!({
+            "state": "exception",
+            "index": v.0,
+            "type": *kind
         })),
     };
 }
@@ -145,9 +165,7 @@ fn set_state_ide() -> Status {
 
     let state = &mut *access_state();
     state.0 += 1;
-    state.1 = AppState::Waiting {
-        begin: time::now(),
-    };
+    state.1 = AppState::Waiting { begin: time::now() };
     return Status::Ok;
 }
 
@@ -176,13 +194,117 @@ fn set_state_guesting(room: Option<String>) -> Status {
         );
 
         let state = &mut *access_state();
+
+        let (easytier, fake_server) = room.start();
+        let fake_server = fake_server.unwrap();
+        let port = fake_server.port;
+
         state.0 += 1;
-        let (easytier, entry) = room.start();
         state.1 = AppState::Guesting {
             easytier: easytier,
-            server: entry.unwrap(),
-            _room: room,
+            server: fake_server,
+            ok: false,
         };
+
+        let index = state.0;
+        thread::spawn(move || {
+            fn check_conn(port: u16) -> bool {
+                let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(4)))
+                    .unwrap();
+                socket
+                    .set_write_timeout(Some(Duration::from_secs(4)))
+                    .unwrap();
+                socket
+                    .connect(&SockAddr::from(SocketAddrV4::new(
+                        Ipv4Addr::new(127, 0, 0, 1),
+                        port,
+                    )))
+                    .unwrap();
+
+                if let Ok(_) = socket.send(&[0xFE]) {
+                    let mut buf: [mem::MaybeUninit<u8>; 1] =
+                        unsafe { mem::MaybeUninit::uninit().assume_init() };
+
+                    if let Ok(size) = socket.recv(&mut buf)
+                        && size >= 1
+                        && unsafe { buf[0].assume_init() } == 0xFF
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            let mut ok = false;
+            for _ in 0..5 {
+                let end = time::now() + Duration::from_secs(5);
+                if check_conn(port) {
+                    ok = true;
+                    break;
+                }
+
+                thread::sleep(end.duration_since(time::now()).unwrap_or(Duration::ZERO));
+            }
+
+            let index = {
+                let mut state = access_state();
+                if state.0 != index {
+                    return;
+                }
+
+                state.0 += 1;
+                if !ok {
+                    state.1 = AppState::Exception {
+                        begin: time::now(),
+                        kind: EXCEPTION_KIND_PING_HOST_FAIL,
+                    };
+
+                    return;
+                }
+
+                if let AppState::Guesting { ok, .. } = &mut state.1 {
+                    *ok = true;
+                } else {
+                    panic!("State has been changed without increasing index.");
+                }
+
+                logging!("UI", "Room is ready, port = {}.", port);
+                state.0
+            };
+
+            let mut error_count: u8 = 0;
+            loop {
+                let end = time::now() + Duration::from_secs(5);
+                if check_conn(port) {
+                    error_count = 0;
+                } else {
+                    error_count += 1;
+                    if error_count >= 5 {
+                        let mut state = access_state();
+                        if state.0 != index {
+                            return;
+                        }
+
+                        logging!("UI", "Connection to room has been lost, port = {}.", port);
+                        state.0 += 1;
+                        state.1 = AppState::Exception {
+                            begin: time::now(),
+                            kind: EXCEPTION_KIND_PING_HOST_RST,
+                        };
+                        return;
+                    }
+                }
+
+                if access_state().0 != index {
+                    return;
+                }
+
+                thread::sleep(end.duration_since(time::now()).unwrap_or(Duration::ZERO));
+            }
+        });
         return Status::Ok;
     }
 
@@ -274,11 +396,11 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
                 return false;
             }
 
-            if let Ok(_) = launch_signal_rx.recv_timeout(Duration::from_millis(200)) {
+            if let Ok(_) = launch_signal_rx.try_recv() {
                 return;
             }
 
-            let state = &mut *GLOBAL_STATE.lock().unwrap();
+            let mut state = GLOBAL_STATE.lock().unwrap();
             match &mut state.1 {
                 AppState::Waiting { begin } => {
                     if handle_offline(begin) {
@@ -313,8 +435,9 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
                     if !easytier.is_alive() {
                         logging!("UI", "Easytier has been dead.");
                         state.0 += 1;
-                        state.1 = AppState::Waiting {
+                        state.1 = AppState::Exception {
                             begin: time::now(),
+                            kind: EXCEPTION_KIND_HOST_ET_CRASH,
                         };
                     }
                 }
@@ -322,13 +445,21 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
                     if !easytier.is_alive() {
                         logging!("UI", "Easytier has been dead.");
                         state.0 += 1;
-                        state.1 = AppState::Waiting {
+                        state.1 = AppState::Exception {
                             begin: time::now(),
+                            kind: EXCEPTION_KIND_GUEST_ET_CRASH,
                         };
+                    }
+                }
+                AppState::Exception { begin, .. } => {
+                    if handle_offline(begin) {
+                        shutdown.notify();
+                        return;
                     }
                 }
             };
 
+            drop(state);
             thread::sleep(Duration::from_millis(200));
         }
     });

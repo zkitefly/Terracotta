@@ -41,7 +41,7 @@ lazy_static::lazy_static! {
         let mut addresses: Vec<IpAddr> = vec![];
 
         if let Ok(networks) = local_ip_address::list_afinet_netifas() {
-            logging!("UI", "Raw Local IP Addresses: {:?}", networks);
+            logging!("UI", "Local IP Addresses: {:?}", networks);
 
             for (_, address) in networks.into_iter() {
                 match address {
@@ -64,7 +64,6 @@ lazy_static::lazy_static! {
         addresses.push(IpAddr::V6(Ipv6Addr::UNSPECIFIED));
 
         addresses.sort_by(|ip1, ip2| ip2.cmp(ip1));
-        logging!("UI", "Local IP Addresses: {:?}", addresses);
         addresses
     };
 }

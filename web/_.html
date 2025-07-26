@@ -660,7 +660,19 @@
                 </div>
             </div>
 
-            <div class="view" id="ide-view">
+            <div class="view" id="room-error-view">
+                <div class="result-view">
+                    <div class="result-icon">❌</div>
+                    <h2 class="result-title" id="room-error-title">***</h2>
+                    <p class="result-description" id="room-error-desc">***</p>
+                    <button class="action-button back-button" id="room-error-back-button">
+                        <i class="fas fa-home"></i>
+                        返回主页
+                    </button>
+                </div>
+            </div>
+
+            <div class="view" id="error-view">
                 <div class="result-view">
                     <div class="result-icon">❌</div>
                     <h2 class="result-title" id="error-title"></h2>
@@ -736,8 +748,22 @@
                                 document.getElementById("invite-code-display").innerText = r.room;
                             }
                         } else if (r.state == "guesting") {
-                            showView("guest-result-view");
-                            document.getElementById("guest-backup-address").innerText = r.url
+                            if (r.ok) {
+                                showView("guest-result-view");
+                                document.getElementById("guest-backup-address").innerText = r.url;
+                            }
+                        } else if (r.state == "exception") {
+                            showView("room-error-view");
+                            let err;
+                            if (r.type == 0) {
+                                err = { "title": "加入房间失败", "desc": "房间已关闭或网络不稳定" };
+                            } else if (r.type == 2) {
+                                err = { "title": "加入房间失败", "desc": "EasyTier 已崩溃，请向开发者反馈该问题"};
+                            } else if (r.type == 3) {
+                                err = { "title": "创建房间失败", "desc": "EasyTier 已崩溃，请向开发者反馈该问题"};
+                            }
+                            document.getElementById("room-error-title").innerText = err.title;
+                            document.getElementById("room-error-desc").innerText = err.desc;
                         }
                     }).catch(() => {
                         failCounter += 1;
@@ -752,14 +778,14 @@
                             }
                             document.getElementById("error-title").innerText = error.title;
                             document.getElementById("error-desc").innerText = error.desc;
-                            showView("ide-view");
+                            showView("error-view");
                         }
                     });
                 });
             }, 500);
         }
 
-        ['host-loading-back-button', "host-back-button", 'guest-loading-back-button', 'guest-back-button', 'guest-result-back-button'].forEach(id => {
+        ['host-loading-back-button', "host-back-button", 'guest-loading-back-button', 'guest-back-button', 'guest-result-back-button', "room-error-back-button"].forEach(id => {
             document.getElementById(id).addEventListener('click', () => {
                 showView('main-view');
                 fetch("/state/ide");

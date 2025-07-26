@@ -1,5 +1,5 @@
 use core::panic;
-use std::net::{Ipv4Addr, UdpSocket};
+use std::{env, net::{Ipv4Addr, UdpSocket}};
 
 use num_bigint::BigUint;
 use rand_core::{OsRng, TryRngCore};
@@ -193,14 +193,6 @@ impl Room {
             ];
         }
 
-        let port = if let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
-            && let Ok(address) = socket.local_addr()
-        {
-            address.port()
-        } else {
-            35781
-        };
-
         let mut args = vec![
             "--network-name".to_string(),
             format!(
@@ -219,49 +211,60 @@ impl Room {
             args.push(arg.to_string());
         }
 
-        if self.host {
+        let fake_server = if self.host {
             args.push("--ipv4".to_string());
             args.push("10.144.144.1".to_string());
+
+            None
         } else {
+            lazy_static::lazy_static! {
+                static ref ONLY_V6: bool = {
+                    let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None).unwrap();
+                    if cfg!(debug_assertions) && cfg!(target_family = "windows") {
+                        // Socket2 is having a heated debate on whether only_v6 should return an 4 bytes buffer rather than 1.
+                        // See https://github.com/rust-lang/socket2/pull/603
+                        // For now, we catch this panic information where debug assertions are enabled and we are on Windows.
+                        if let Ok(v) = std::panic::catch_unwind(|| socket.only_v6()) {
+                            v.unwrap()
+                        } else if let Ok(v) = env::var("TERRACOTTA_ONLY_V6") {
+                            match v.as_str() {
+                                "true" | "1" | "yes" => true,
+                                "false" | "0" | "no" => false,
+                                _ => panic!("Invalid value for TERRACOTTA_ONLY_V6: {}", v),
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        socket.only_v6().unwrap()
+                    }
+                };
+            }
+
+            let port = if let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
+                && let Ok(address) = socket.local_addr()
+            {
+                address.port()
+            } else {
+                35781
+            };
+
             args.push("-d".to_string());
             args.push(format!(
                 "--port-forward=tcp://[::0]:{}/10.144.144.1:{}",
                 port, self.port
             ));
-        }
 
-        lazy_static::lazy_static! {
-            static ref ONLY_V6: bool = {
-                let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None).unwrap();
-                if cfg!(debug_assertions) && cfg!(target_family = "windows") {
-                    // Socket2 is having a heated debate on whether only_v6 should return an 4 bytes buffer rather than 1.
-                    // See https://github.com/rust-lang/socket2/pull/603
-                    // For now, we catch this panic information where debug assertions are enabled and we are on Windows.
-                    if let Ok(v) = std::panic::catch_unwind(|| socket.only_v6()) {
-                        v.unwrap()
-                    } else {
-                        false
-                    }
-                } else {
-                    socket.only_v6().unwrap()
-                }
-            };
-        }
+            if *ONLY_V6 {
+                args.push(format!(
+                    "--port-forward=tcp://0.0.0.0:{}/10.144.144.1:{}",
+                    port, self.port
+                ));
+            }
 
-        if *ONLY_V6 {
-            args.push(format!(
-                "--port-forward=tcp://0.0.0.0:{}/10.144.144.1:{}",
-                port, self.port
-            ));
-        }
+            Some(fakeserver::create(port, MOTD.to_string()))
+        };
 
-        return (
-            easytier::FACTORY.create(args),
-            if self.host {
-                None
-            } else {
-                Some(fakeserver::create(port, MOTD.to_string()))
-            },
-        );
+        return (easytier::FACTORY.create(args), fake_server);
     }
 }
