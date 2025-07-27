@@ -216,25 +216,22 @@ fn set_state_guesting(room: Option<String>) -> Status {
                 socket
                     .set_write_timeout(Some(Duration::from_secs(4)))
                     .unwrap();
-                socket
-                    .connect(&SockAddr::from(SocketAddrV4::new(
-                        Ipv4Addr::new(127, 0, 0, 1),
-                        port,
-                    )))
-                    .unwrap();
+                if let Ok(_) = socket.connect_timeout(&SockAddr::from(SocketAddrV4::new(
+                    Ipv4Addr::new(127, 0, 0, 1),
+                    port,
+                )), Duration::from_secs(4)) {
+                    if let Ok(_) = socket.send(&[0xFE]) {
+                        let mut buf: [mem::MaybeUninit<u8>; 1] =
+                            unsafe { mem::MaybeUninit::uninit().assume_init() };
 
-                if let Ok(_) = socket.send(&[0xFE]) {
-                    let mut buf: [mem::MaybeUninit<u8>; 1] =
-                        unsafe { mem::MaybeUninit::uninit().assume_init() };
-
-                    if let Ok(size) = socket.recv(&mut buf)
-                        && size >= 1
-                        && unsafe { buf[0].assume_init() } == 0xFF
-                    {
-                        return true;
+                        if let Ok(size) = socket.recv(&mut buf)
+                            && size >= 1
+                            && unsafe { buf[0].assume_init() } == 0xFF
+                        {
+                            return true;
+                        }
                     }
                 }
-
                 return false;
             }
 
