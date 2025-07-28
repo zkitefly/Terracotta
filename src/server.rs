@@ -89,13 +89,13 @@ impl<'r> rocket::response::Responder<'r, 'static> for MemoryFile {
 #[get("/<path..>")]
 fn static_files(mut path: PathBuf) -> Result<MemoryFile, Status> {
     lazy_static::lazy_static! {
-        static ref MAIN_PAGE: Vec<(PathBuf, &'static [u8])> = {
+        static ref MAIN_PAGE: Vec<(PathBuf, Box<[u8]>)> = {
             let mut reader = sevenz_rust2::ArchiveReader::new(
                 std::io::Cursor::new(WEB_STATIC),
                 sevenz_rust2::Password::empty(),
             )
             .unwrap();
-            let mut pages: Vec<(PathBuf, &'static [u8])> = vec![];
+            let mut pages: Vec<(PathBuf, Box<[u8]>)> = vec![];
             let _ = reader.for_each_entries(|entry, reader| {
                 if entry.is_directory() {
                     return Ok(true);
@@ -103,7 +103,8 @@ fn static_files(mut path: PathBuf) -> Result<MemoryFile, Status> {
 
                 let mut buffer: Vec<u8> = vec![];
                 reader.read_to_end(&mut buffer).unwrap();
-                pages.push((PathBuf::from(entry.name()), Box::leak(Box::new(buffer))));
+                buffer.shrink_to_fit();
+                pages.push((PathBuf::from(entry.name()), buffer.into_boxed_slice()));
 
                 return Ok(true);
             });
@@ -120,6 +121,7 @@ fn static_files(mut path: PathBuf) -> Result<MemoryFile, Status> {
                 logging!("UI", "{}", msg);
             }
 
+            pages.shrink_to_fit();
             pages
         };
     }
@@ -332,7 +334,7 @@ fn get_meta() -> json::Json<json::Value> {
     }));
 }
 
-pub async fn server_main(port: mpsc::Sender<u16>) {
+pub async fn server_main(port: mpsc::Sender<u16>, daemon: bool) {
     let (launch_signal_tx, launch_signal_rx) = mpsc::channel::<()>();
     let shutdown_signal_tx = launch_signal_tx.clone();
 
@@ -360,7 +362,7 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
                 launch_signal_tx.send(()).unwrap();
 
                 let local_port = rocket.config().port;
-                if !cfg!(debug_assertions) {
+                if !cfg!(debug_assertions) && !daemon {
                     let _ = open::that(format!("http://127.0.0.1:{}/", local_port));
                 }
                 let _ = port.send(local_port);
@@ -377,6 +379,10 @@ pub async fn server_main(port: mpsc::Sender<u16>) {
 
         loop {
             fn handle_offline(time: &SystemTime) -> bool {
+                if cfg!(target_os = "macos") {
+                    return false;
+                }
+
                 const TIMEOUT: u64 = if cfg!(debug_assertions) { 20 } else { 600 };
 
                 if let Ok(timeout) = time::now().duration_since(*time) {
