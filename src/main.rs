@@ -17,7 +17,8 @@ use std::{
     env, fs, io,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::mpsc,
-    thread, time::Duration,
+    thread,
+    time::Duration,
 };
 
 pub mod code;
@@ -69,12 +70,18 @@ lazy_static::lazy_static! {
 }
 
 lazy_static! {
-    pub static ref FILE_ROOT: std::path::PathBuf = if cfg!(target_os = "macos")
-        && let Ok(home) = env::var("HOME")
-    {
-        std::path::Path::new(&home).join("terracotta")
-    } else {
-        std::path::Path::new(&env::temp_dir()).join("terracotta")
+    pub static ref FILE_ROOT: std::path::PathBuf = {
+        let path = if cfg!(target_os = "macos")
+            && let Ok(home) = env::var("HOME")
+        {
+            std::path::Path::new(&home).join("terracotta")
+        } else {
+            std::path::Path::new(&env::temp_dir()).join("terracotta")
+        };
+
+        fs::create_dir_all(&path).unwrap();
+
+        path
     };
     static ref WORKING_DIR: std::path::PathBuf = {
         use chrono::{Datelike, Timelike};
@@ -145,10 +152,14 @@ async fn main() {
                 println!("  --auto: Automatically determine the mode to run.");
                 println!("  --single: Forcely run in single server mode.");
                 println!("  --daemon: Forcely run in single server daemon mode.");
-                println!("  --secondary <port>: Forcely run in secondary mode, opening an UI on the specified port.");
+                println!(
+                    "  --secondary <port>: Forcely run in secondary mode, opening an UI on the specified port."
+                );
                 println!("  --server <port>: Host a Terracotta Room on the specified port.");
-                println!("  --client <room_code>: Join a Terracotta Room with the specified room code.");   
-            },
+                println!(
+                    "  --client <room_code>: Join a Terracotta Room with the specified room code."
+                );
+            }
             _ => main_panic(arguments),
         },
         2 => match arguments[0].as_str() {
@@ -167,7 +178,7 @@ async fn main() {
                 } else {
                     main_panic_msg(arguments, "Invalid room code");
                 }
-            },
+            }
             "--client" => {
                 if let Ok(room) = code::Room::from(&arguments[1]) {
                     logging!(
@@ -182,14 +193,14 @@ async fn main() {
                 } else {
                     main_panic_msg(arguments, "Invalid port number");
                 }
-            },
+            }
             "--secondary" => {
                 if let Ok(port) = arguments[1].parse::<u16>() {
                     main_secondary(port);
                 } else {
                     main_panic_msg(arguments, "Invalid port number");
                 }
-            },
+            }
             _ => main_panic(arguments),
         },
         _ => main_panic(arguments),
