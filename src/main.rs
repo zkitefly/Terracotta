@@ -17,7 +17,7 @@ use std::{
     env, fs, io,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::mpsc,
-    thread,
+    thread, time::Duration,
 };
 
 pub mod code;
@@ -69,7 +69,7 @@ lazy_static::lazy_static! {
 }
 
 lazy_static! {
-    static ref FILE_ROOT: std::path::PathBuf = if cfg!(target_os = "macos")
+    pub static ref FILE_ROOT: std::path::PathBuf = if cfg!(target_os = "macos")
         && let Ok(home) = env::var("HOME")
     {
         std::path::Path::new(&home).join("terracotta")
@@ -137,7 +137,7 @@ async fn main() {
         1 => match arguments[0].as_str() {
             "--auto" => main_auto().await,
             "--single" => main_single(None, false).await,
-            "--daemon" => main_single(None, true).await,
+            "--daemon" => main_daemon().await,
             "--help" => {
                 println!("Welcoming using Terracotta | 陶瓦联机");
                 println!("Usage: terracotta [OPTIONS]");
@@ -215,6 +215,10 @@ async fn main_auto() {
             logging!("UI", "Running in secondary mode, port={}.", port);
 
             main_secondary(*port);
+
+            if cfg!(target_os = "macos") {
+                thread::sleep(Duration::from_secs(5));
+            }
         }
         Lock::Unknown => {
             logging!(
@@ -223,6 +227,27 @@ async fn main_auto() {
             );
 
             main_single(None, false).await;
+        }
+    };
+}
+
+async fn main_daemon() {
+    let state = Lock::get_state();
+    match &state {
+        Lock::Single { .. } => {
+            logging!("UI", "Running in daemon server mode.");
+            main_single(Some(state), true).await;
+        }
+        Lock::Secondary { port } => {
+            logging!("UI", "Running in daemon secondary mode, port={}.", port);
+        }
+        Lock::Unknown => {
+            logging!(
+                "UI",
+                "Cannot determin application mode. Fallback to server mode."
+            );
+
+            main_single(None, true).await;
         }
     };
 }
@@ -254,8 +279,6 @@ async fn main_single(state: Option<Lock>, daemon: bool) {
 }
 
 fn main_secondary(port: u16) {
-    logging!("UI", "Running in secondary mode, port={}.", port);
-
     let _ = open::that(format!("http://127.0.0.1:{}/", port));
 }
 
