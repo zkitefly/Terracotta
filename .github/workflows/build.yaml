@@ -154,7 +154,7 @@ jobs:
             >> "$TEMP_DIR/Applications/terracotta.app/Contents/MacOS/terracotta"
         
           chmod -R 755 "$TEMP_DIR/"
-          PKG_OUTPUT=$(mktemp)
+          PKG_OUTPUT="terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.pkg"
           pkgbuild \
             --root "$TEMP_DIR" \
             --identifier "net.burningtnt.terracotta" \
