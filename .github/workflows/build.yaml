@@ -108,7 +108,7 @@ jobs:
         for artifact in "${!win_artifacts[@]}"; do
           source="${win_artifacts[$artifact]}"
           cp "target/$artifact" "$source"
-          zip -q - "$source" | gh-actions-artifact-client.js upload "$source.zip"
+          zip -q - "$source" | gh-actions-artifact-client.js upload "$source"
         done
         
         declare -A unix_artifacts
@@ -124,7 +124,7 @@ jobs:
 
           target="${source}.tar"
           tar -cf "$target" "$source"
-          zip -q - "$target" | gh-actions-artifact-client.js upload "$target.zip"
+          zip -q - "$target" | gh-actions-artifact-client.js upload "$target"
         done
 
         echo "version=${TERRACOTTA_VERSION}" >> $GITHUB_OUTPUT
@@ -148,7 +148,7 @@ jobs:
           mkdir -p "$TEMP_DIR/Applications"
           cp -R build/macos/terracotta.app "$TEMP_DIR/Applications"
           mkdir "$TEMP_DIR/Applications/terracotta.app/Contents/MacOS/"
-          gh-actions-artifact-client.js download "terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.tar.zip" >> "terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.tar.zip"
+          gh-actions-artifact-client.js download "terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.tar" >> "terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.tar.zip"
           unzip -p "terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.tar.zip" \
             | gtar -xOf - \
             >> "$TEMP_DIR/Applications/terracotta.app/Contents/MacOS/terracotta"
@@ -161,7 +161,7 @@ jobs:
             --version "1.0" \
             --install-location "/" \
             "$PKG_OUTPUT"
-          zip -q - $PKG_OUTPUT | gh-actions-artifact-client.js upload "terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.pkg.zip"
+          zip -q - $PKG_OUTPUT | gh-actions-artifact-client.js upload "terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.pkg"
         done
   assemble-app-image:
     strategy:
@@ -197,7 +197,7 @@ jobs:
         artifact=$(mktemp -d)
         chmod 755 "$artifact"
 
-        gh-actions-artifact-client.js download "terracotta-${TERRACOTTA_VERSION}-linux-${CLASSIFIER}.tar.zip" >> "terracotta-${TERRACOTTA_VERSION}-linux-${CLASSIFIER}.tar.zip"
+        gh-actions-artifact-client.js download "terracotta-${TERRACOTTA_VERSION}-linux-${CLASSIFIER}.tar" >> "terracotta-${TERRACOTTA_VERSION}-linux-${CLASSIFIER}.tar.zip"
         unzip -p "terracotta-${TERRACOTTA_VERSION}-linux-${CLASSIFIER}.tar.zip" \
           | tar -xOf - \
           >> "$artifact/terracotta"
@@ -220,5 +220,5 @@ jobs:
         chmod 755 "$source"
 
         zip -q - "$source" \
-          | gh-actions-artifact-client.js upload "${source}.zip"
+          | gh-actions-artifact-client.js upload "${source}"
           
