@@ -9,7 +9,6 @@ on:
     inputs:
       version:
         description: Terracotta Version
-        required: true
         type: string
 
 env:
