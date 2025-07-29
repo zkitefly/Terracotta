@@ -1,5 +1,5 @@
 [build]
-rustflags = ["-Z", "threads=8", "-Z", "share-generics=no"]
+rustflags = ["-Z", "threads=8"]
 
 [target.'cfg(target_family = "windows")']
 rustflags = [
