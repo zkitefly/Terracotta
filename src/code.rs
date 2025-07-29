@@ -171,16 +171,13 @@ impl Room {
             static ref REPLAY_SERVERS: Vec<&'static str> = vec![
                 "tcp://public.easytier.top:11010",
                 "tcp://ah.nkbpal.cn:11010",
-                "tcp://gz.minebg.top:11010",
                 "tcp://turn.hb.629957.xyz:11010",
-                "tcp://turn.sc.629957.xyz:11010",
                 "tcp://turn.js.629957.xyz:11012",
                 "tcp://sh.993555.xyz:11010",
                 "tcp://turn.bj.629957.xyz:11010",
                 "tcp://et.sh.suhoan.cn:11010",
                 "tcp://et-hk.clickor.click:11010",
                 "tcp://et.01130328.xyz:11010",
-                "tcp://et.ie12vps.xyz:11010",
                 "tcp://et.gbc.moe:11011",
             ];
 

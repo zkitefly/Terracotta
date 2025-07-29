@@ -71,8 +71,10 @@ impl EasytierFactory {
             .unwrap();
 
         let (sender, receiver) = mpsc::channel::<String>();
-        Self::pump_std(&sender, process.stdout.take().unwrap());
-        Self::pump_std(&sender, process.stderr.take().unwrap());
+        let pump = [
+            ("stdout", Self::pump_std(&sender, process.stdout.take().unwrap())),
+            ("stderr", Self::pump_std(&sender, process.stderr.take().unwrap())),
+        ];
 
         let process: Arc<Mutex<process::Child>> = Arc::new(Mutex::new(process));
         let process2 = process.clone();
@@ -103,7 +105,14 @@ impl EasytierFactory {
                 thread::sleep(Duration::from_millis(100));
             };
 
-            let mut output = String::from("Easytier has exit with status {");
+            thread::sleep(Duration::from_secs(3));
+            for (name, join) in pump.into_iter() {
+                if !join.is_finished() {
+                    logging!("UI", "Logging adapter {} has hang for 3s.", name);
+                }
+            }
+
+            let mut output = String::from("Easytier has exit. with status {");
             output += &match status {
                 Some(status) => format!(
                     "code={}, success={}",
@@ -133,9 +142,9 @@ impl EasytierFactory {
     fn pump_std<R: std::io::Read + std::marker::Send + 'static>(
         sender: &mpsc::Sender<String>,
         source: R,
-    ) {
+    ) -> thread::JoinHandle<()> {
         let sender = sender.clone();
-        thread::spawn(move || {
+        return thread::spawn(move || {
             let reader = BufReader::new(source);
             for line in reader.lines() {
                 if let Ok(line) = line {
