@@ -11,14 +11,12 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Room {
-    pub name: [u8; 15],
-    pub secret: [u8; 10],
+    name: [u8; 15],
+    secret: [u8; 10],
     pub code: String,
     pub port: u16,
     pub host: bool,
 }
-
-pub const MOTD: &'static str = "§6§l陶瓦联机大厅（请保持陶瓦运行并关闭其他代理软件）";
 
 static CHARS: &[u8] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ".as_bytes();
 
@@ -166,7 +164,7 @@ impl Room {
         return Err("No Room code found.".to_string());
     }
 
-    pub fn start(&self) -> (Easytier, Option<FakeServer>) {
+    pub fn start(&self, motd: &'static str) -> (Easytier, Option<FakeServer>) {
         lazy_static::lazy_static! {
             static ref REPLAY_SERVERS: Vec<&'static str> = vec![
                 "tcp://public.easytier.top:11010",
@@ -230,7 +228,11 @@ impl Room {
                                 _ => panic!("Invalid value for TERRACOTTA_ONLY_V6: {}", v),
                             }
                         } else {
-                            false
+                            panic!(
+                                "Due to https://github.com/rust-lang/socket2/pull/603, \
+                                 we cannot determin the only_v6 socket setting in developing environment. \
+                                 Please set the environment variable TERRACOTTA_ONLY_V6 to true or false."
+                            );
                         }
                     } else {
                         socket.only_v6().unwrap()
@@ -259,7 +261,7 @@ impl Room {
                 ));
             }
 
-            Some(fakeserver::create(port, MOTD.to_string()))
+            Some(fakeserver::create(port, motd))
         };
 
         return (easytier::FACTORY.create(args), fake_server);

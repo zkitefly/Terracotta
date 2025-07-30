@@ -6,17 +6,27 @@ use std::time::Duration;
 
 pub struct FakeServer {
     pub port: u16,
-    signal: Sender<()>,
+    signal: Sender<Signals>,
 }
 
-pub fn create(port: u16, motd: String) -> FakeServer {
-    let (tx, rx) = mpsc::channel::<()>();
+impl FakeServer {
+    pub fn activate(&self) {
+        let _ = self.signal.send(Signals::Activate);
+    }
+}
+
+enum Signals {
+    Activate, Terminate
+}
+
+pub fn create(port: u16, motd: &'static str) -> FakeServer {
+    let (tx, rx) = mpsc::channel::<Signals>();
     thread::spawn(move || run(port, motd, rx));
 
     return FakeServer { port: port, signal: tx };
 }
 
-fn run(port: u16, motd: String, signal: Receiver<()>) {
+fn run(port: u16, motd: &'static str, signal: Receiver<Signals>) {
     let sockets: Vec<(UdpSocket, &'static SocketAddr)> = crate::ADDRESSES
         .iter()
         .map(|address| {
@@ -52,24 +62,30 @@ fn run(port: u16, motd: String, signal: Receiver<()>) {
         })
         .collect();
 
-    let message: String = format!("[MOTD]{}[/MOTD][AD]{}[/AD]", motd, port);
-    let message_bytes = message.as_bytes();
+    match signal.recv().unwrap() {
+        Signals::Activate => {
+            let message: String = format!("[MOTD]{}[/MOTD][AD]{}[/AD]", motd, port);
+            let message_bytes = message.as_bytes();
 
-    loop {
-        if let Ok(_) = signal.try_recv() {
-            break;
+            loop {
+                if let Ok(signal) = signal.try_recv() && let Signals::Terminate = signal {
+                    break;
+                }
+
+                for (socket, address) in sockets.iter() {
+                    let _ = socket.send_to(message_bytes, address);
+                }
+
+                thread::sleep(Duration::from_millis(1500));
+            }
+        },
+        Signals::Terminate => {
         }
-
-        for (socket, address) in sockets.iter() {
-            let _ = socket.send_to(message_bytes, address);
-        }
-
-        thread::sleep(Duration::from_millis(1500));
     }
 }
 
 impl Drop for FakeServer {
     fn drop(&mut self) {
-        let _ = self.signal.send(());
+        let _ = self.signal.send(Signals::Terminate);
     }
 }

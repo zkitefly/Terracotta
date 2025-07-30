@@ -8,11 +8,11 @@ use rocket::http::Status;
 use rocket::serde::json;
 use socket2::{Domain, SockAddr, Socket, Type};
 
-use crate::code::{self, Room};
+use crate::code::Room;
 use crate::easytier::Easytier;
 use crate::fakeserver::FakeServer;
 use crate::scanning::Scanning;
-use crate::{LOGGING_FILE, time};
+use crate::{LOGGING_FILE, time, MOTD};
 
 enum AppState {
     Waiting {
@@ -179,7 +179,7 @@ fn set_state_scanning() -> Status {
     state.0 += 1;
     state.1 = AppState::Scanning {
         begin: time::now(),
-        scanner: Scanning::create(|motd| motd != code::MOTD),
+        scanner: Scanning::create(|motd| motd != MOTD),
     };
     return Status::Ok;
 }
@@ -197,14 +197,14 @@ fn set_state_guesting(room: Option<String>) -> Status {
 
         let state = &mut *access_state();
 
-        let (easytier, fake_server) = room.start();
-        let fake_server = fake_server.unwrap();
-        let port = fake_server.port;
+        let (easytier, fake_server) = room.start(MOTD);
+        let server = fake_server.unwrap();
+        let port = server.port;
 
         state.0 += 1;
         state.1 = AppState::Guesting {
             easytier: easytier,
-            server: fake_server,
+            server: server,
             ok: false,
         };
 
@@ -256,6 +256,7 @@ fn set_state_guesting(room: Option<String>) -> Status {
 
                 state.0 += 1;
                 if !ok {
+                    logging!("UI", "Cannot connect to room, port = {}.", port);
                     state.1 = AppState::Exception {
                         begin: time::now(),
                         kind: EXCEPTION_KIND_PING_HOST_FAIL,
@@ -264,7 +265,8 @@ fn set_state_guesting(room: Option<String>) -> Status {
                     return;
                 }
 
-                if let AppState::Guesting { ok, .. } = &mut state.1 {
+                if let AppState::Guesting { ok, server, .. } = &mut state.1 {
+                    server.activate();
                     *ok = true;
                 } else {
                     panic!("State has been changed without increasing index.");
@@ -429,7 +431,7 @@ pub async fn server_main(port: mpsc::Sender<u16>, daemon: bool) {
 
                         state.0 += 1;
                         state.1 = AppState::Hosting {
-                            easytier: room.start().0,
+                            easytier: room.start(MOTD).0,
                             room: room,
                         };
                     }

@@ -28,6 +28,8 @@ pub mod scanning;
 pub mod server;
 pub mod time;
 
+pub const MOTD: &'static str = "§6§l双击进入陶瓦联机大厅（请保持陶瓦运行）";
+
 #[cfg(target_family = "windows")]
 pub mod lock_windows;
 #[cfg(target_family = "windows")]
@@ -173,7 +175,7 @@ async fn main() {
                         port,
                         room.code
                     );
-                    wait(room.start());
+                    wait(room.start(MOTD));
 
                     easytier::FACTORY.drop_in_place();
                 } else {
@@ -188,7 +190,7 @@ async fn main() {
                         room.port,
                         room.code
                     );
-                    wait(room.start());
+                    wait(room.start(MOTD));
 
                     easytier::FACTORY.drop_in_place();
                 } else {
