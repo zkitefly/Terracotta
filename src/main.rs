@@ -1,3 +1,8 @@
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)), 
+    windows_subsystem = "windows"
+)]
+
 #[macro_export]
 macro_rules! logging {
     ($prefix:expr, $($arg:tt)*) => {
@@ -22,6 +27,7 @@ use std::{
 };
 
 pub mod code;
+pub mod core;
 pub mod easytier;
 pub mod fakeserver;
 pub mod scanning;
@@ -112,7 +118,11 @@ async fn main() {
         if let Ok(value) = fs::read_dir(&*FILE_ROOT) {
             for file in value {
                 if let Ok(file) = file
-                    && file.path().file_name().and_then(|v| v.to_str()).is_none_or(|v| v != "terracotta.lock")
+                    && file
+                        .path()
+                        .file_name()
+                        .and_then(|v| v.to_str())
+                        .is_none_or(|v| v != "terracotta.lock")
                     && let Ok(metadata) = file.metadata()
                     && let Ok(file_type) = file.file_type()
                     && let Ok(time) = metadata.created()

@@ -598,7 +598,7 @@
                     <div class="result-icon">✅</div>
                     <h2 class="result-title">成功创建房间</h2>
                     <div class="invite-code" id="invite-code-display">*****-*****-*****-*****-*****</div>
-                    <p class="result-description">请将此邀请码分享给您的朋友，他们可以使用此代码加入您的Minecraft世界。</p>
+                    <p class="result-description">请提醒您的朋友下载 Terracotta | 陶瓦联机，选择『我想当房客』并输入此邀请码。</p>
                     <button class="action-button back-button" id="host-back-button">
                         <i class="fas fa-arrow-left"></i>
                         退出房间
@@ -650,19 +650,19 @@
                 <div class="result-view">
                     <div class="result-icon">🎮</div>
                     <h2 class="result-title">成功加入房间</h2>
-                    <p class="result-description">现在可以进入多人游戏了！</p>
+                    <p class="result-description">请启动 Minecraft，选择多人游戏，双击进入陶瓦联机大厅。</p>
                     <p class="result-description">备用联机地址：<span id="guest-backup-address"
                             style="user-select: all">*</span></p>
                     <button class="action-button back-button" id="guest-result-back-button">
                         <i class="fas fa-home"></i>
-                        退出房间
+                        关闭房间
                     </button>
                 </div>
             </div>
 
             <div class="view" id="room-error-view">
                 <div class="result-view">
-                    <div class="result-icon">❌</div>
+                    <div class="result-icon" id="room-error-icon">❌</div>
                     <h2 class="result-title" id="room-error-title">***</h2>
                     <p class="result-description" id="room-error-desc">***</p>
                     <button class="action-button back-button" id="room-error-back-button">
@@ -763,7 +763,10 @@
                                 err = { "title": "加入房间失败", "desc": "EasyTier 已崩溃，请向开发者反馈该问题"};
                             } else if (r.type == 3) {
                                 err = { "title": "创建房间失败", "desc": "EasyTier 已崩溃，请向开发者反馈该问题"};
+                            } else if (r.type == 4) {
+                                err = { "title": "房间已关闭", "desc": "您已退出游戏存档，房间已自动关闭", "icon": "⏸"}
                             }
+                            document.getElementById("room-error-icon").innerText = err.icon ?? "❌";
                             document.getElementById("room-error-title").innerText = err.title;
                             document.getElementById("room-error-desc").innerText = err.desc;
                         }
