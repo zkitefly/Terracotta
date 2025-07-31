@@ -183,8 +183,8 @@ pub fn get_state() -> Value {
             "ok": ok
         }),
         AppState::Exception { kind, .. } => json!({
-            "index": index,
             "state": "exception",
+            "index": index,
             "type": match kind {
                 ExceptionType::PingHostFail => 0,
                 ExceptionType::PingHostRst => 1,
