@@ -23,7 +23,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::mpsc,
     thread,
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 pub mod code;
@@ -32,7 +32,6 @@ pub mod easytier;
 pub mod fakeserver;
 pub mod scanning;
 pub mod server;
-pub mod time;
 
 pub const MOTD: &'static str = "§6§l双击进入陶瓦联机大厅（请保持陶瓦运行）";
 
@@ -113,7 +112,7 @@ lazy_static! {
 #[rocket::main]
 async fn main() {
     thread::spawn(move || {
-        let now = time::now();
+        let now = SystemTime::now();
 
         if let Ok(value) = fs::read_dir(&*FILE_ROOT) {
             for file in value {

@@ -82,7 +82,7 @@ fn main() {
     for target in targets.iter() {
         let name = format!(
             "terracotta-{}-{}",
-            env!("TERRACOTTA_VERSION"),
+            env::var("TERRACOTTA_VERSION").unwrap(),
             target.classifier
         );
 
