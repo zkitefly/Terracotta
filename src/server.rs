@@ -171,19 +171,21 @@ pub async fn server_main(port_callback: mpsc::Sender<u16>, daemon: bool) {
                 }
                 let _ = port_callback.send(port);
 
-                let shutdown = rocket.shutdown();
-                thread::spawn(move || {
-                    loop {
-                        if let Some(duration) = core::get_waiting_time()
-                            && duration > Duration::from_secs(600)
-                        {
-                            shutdown.notify();
-                            return;
-                        }
+                if !daemon {
+                    let shutdown = rocket.shutdown();
+                    thread::spawn(move || {
+                        loop {
+                            if let Some(duration) = core::get_waiting_time()
+                                && duration > Duration::from_secs(600)
+                            {
+                                shutdown.notify();
+                                return;
+                            }
 
-                        thread::sleep(Duration::from_millis(200));
-                    }
-                });
+                           thread::sleep(Duration::from_millis(200));
+                        }
+                    });
+                }
             })
         },
     ))
