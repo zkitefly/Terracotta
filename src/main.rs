@@ -306,15 +306,7 @@ fn main_secondary(port: u16) {
 }
 
 fn redirect_std(file: &'static std::path::PathBuf) {
-    let is_enable = env::args().into_iter().any(|e| &e == "--redirect-std=yes");
-    let is_disable = env::args().into_iter().any(|e| &e == "--redirect-std=no");
-
-    if if is_enable != is_disable {
-        is_disable
-    } else {
-        cfg!(debug_assertions)
-    } {
-        logging!("UI", "Log redirection is disabled.");
+    if cfg!(debug_assertions) {
         return;
     }
 

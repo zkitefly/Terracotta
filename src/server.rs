@@ -4,7 +4,8 @@ use std::thread;
 use std::time::Duration;
 
 use rocket::http::Status;
-use rocket::serde::json;
+use rocket::serde::json::Json;
+use serde_json::{Value, json};
 
 use crate::code::Room;
 use crate::{LOGGING_FILE, core};
@@ -77,8 +78,8 @@ fn static_files(mut path: PathBuf) -> Result<MemoryFile, Status> {
 }
 
 #[get("/state")]
-fn get_state() -> json::Json<json::Value> {
-    return json::Json(core::get_state());
+fn get_state() -> Json<Value> {
+    return Json(core::get_state());
 }
 
 #[get("/state/ide")]
@@ -111,8 +112,8 @@ fn download_log() -> std::fs::File {
 }
 
 #[get("/meta")]
-fn get_meta() -> json::Json<json::Value> {
-    return json::Json(json::json!({
+fn get_meta() -> Json<Value> {
+    return Json(json!({
         "version": env!("TERRACOTTA_VERSION"),
         "easytier_version": env!("TERRACOTTA_ET_VERSION"),
         "target_tuple": format!(
@@ -129,7 +130,7 @@ fn get_meta() -> json::Json<json::Value> {
     }));
 }
 
-pub async fn server_main(port: mpsc::Sender<u16>, daemon: bool) {
+pub async fn server_main(port_callback: mpsc::Sender<u16>, daemon: bool) {
     core::ExceptionType::register_hook(|_| {
         // TODO: Send system notifications.
     });
@@ -155,11 +156,20 @@ pub async fn server_main(port: mpsc::Sender<u16>, daemon: bool) {
         "Open Browser",
         move |rocket| {
             Box::pin(async move {
-                let local_port = rocket.config().port;
+                let port = rocket.config().port;
+                logging!(
+                    ":",
+                    "{}",
+                    json!({
+                        "version": 1, 
+                        "url": format!("http://127.0.0.1:{}/", port)}
+                    )
+                );
+
                 if !cfg!(debug_assertions) && !daemon {
-                    let _ = open::that(format!("http://127.0.0.1:{}/", local_port));
+                    let _ = open::that(format!("http://127.0.0.1:{}/", port));
                 }
-                let _ = port.send(local_port);
+                let _ = port_callback.send(port);
 
                 let shutdown = rocket.shutdown();
                 thread::spawn(move || {
