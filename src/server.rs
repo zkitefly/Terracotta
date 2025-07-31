@@ -3,7 +3,6 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use notify_rust::Notification;
 use rocket::http::Status;
 use rocket::serde::json;
 
@@ -131,27 +130,8 @@ fn get_meta() -> json::Json<json::Value> {
 }
 
 pub async fn server_main(port: mpsc::Sender<u16>, daemon: bool) {
-    core::ExceptionType::register_hook(|exception| {
-        let txt = match exception {
-            core::ExceptionType::PingHostRst => "房间连接断开：房间已关闭或网络不稳定。",
-            core::ExceptionType::GuestEasytierCrash => {
-                "加入房间失败：EasyTier 已崩溃，请向开发者反馈该问题。"
-            }
-            core::ExceptionType::HostEasytierCrash => {
-                "创建房间失败：EasyTier 已崩溃，请向开发者反馈该问题。"
-            }
-            core::ExceptionType::PingServerRst => "房间已关闭：您已退出游戏存档，房间已自动关闭。",
-            _ => {
-                return;
-            }
-        };
-        thread::spawn(|| {
-            let _ = Notification::default()
-                .summary("Terracotta | 陶瓦联机")
-                .body(txt)
-                .auto_icon()
-                .show();
-        });
+    core::ExceptionType::register_hook(|_| {
+        // TODO: Send system notifications.
     });
 
     let _ = rocket::custom(rocket::Config {
