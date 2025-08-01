@@ -1,5 +1,5 @@
 #![cfg_attr(
-    all(target_os = "windows", not(debug_assertions)), 
+    all(target_os = "windows", not(debug_assertions)),
     windows_subsystem = "windows"
 )]
 
@@ -289,6 +289,7 @@ async fn main_single(state: Option<Lock>, daemon: bool) {
     if let Some(state) = state {
         thread::spawn(move || {
             let port = rx.recv().unwrap();
+            output_port(port);
             if port != 0 {
                 state.set_port(port);
             }
@@ -303,6 +304,7 @@ async fn main_single(state: Option<Lock>, daemon: bool) {
 
 fn main_secondary(port: u16) {
     let _ = open::that(format!("http://127.0.0.1:{}/", port));
+    output_port(port);
 }
 
 fn redirect_std(file: &'static std::path::PathBuf) {
@@ -354,4 +356,15 @@ fn redirect_std(file: &'static std::path::PathBuf) {
     }
 
     Box::leak(Box::new(logging_file));
+}
+
+fn output_port(port: u16) {
+    logging!(
+        ":",
+        "{}",
+        serde_json::json!({
+            "version": 1,
+            "url": format!("http://127.0.0.1:{}/", port)
+        })
+    );
 }

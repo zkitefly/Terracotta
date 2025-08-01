@@ -207,15 +207,6 @@ pub async fn server_main(port_callback: mpsc::Sender<u16>, daemon: bool) {
         move |rocket| {
             Box::pin(async move {
                 let port = rocket.config().port;
-                logging!(
-                    ":",
-                    "{}",
-                    json!({
-                        "version": 1,
-                        "url": format!("http://127.0.0.1:{}/", port)}
-                    )
-                );
-
                 if !cfg!(debug_assertions) && !daemon {
                     let _ = open::that(format!("http://127.0.0.1:{}/", port));
                 }
