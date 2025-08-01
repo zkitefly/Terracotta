@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{Arc, RwLock, mpsc};
 use std::thread;
 use std::time::Duration;
 
@@ -12,15 +12,33 @@ use crate::{LOGGING_FILE, core};
 
 static WEB_STATIC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/webstatics.7z"));
 
-pub struct MemoryFile(PathBuf, &'static [u8]);
+struct MemoryFile(Arc<Storage>);
+struct Storage {
+    path: PathBuf,
+    data: Box<[u8]>,
+}
+
+impl AsRef<[u8]> for MemoryFile {
+    fn as_ref(&self) -> &[u8] {
+        return self.0.as_ref().data.as_ref();
+    }
+}
 
 impl<'r> rocket::response::Responder<'r, 'static> for MemoryFile {
-    fn respond_to(self, req: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
-        let mut response = self.1.respond_to(req)?;
-        if let Some(ext) = self.0.extension() {
-            if let Some(ct) = rocket::http::ContentType::from_extension(&ext.to_string_lossy()) {
-                response.set_header(ct);
-            }
+    fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
+        use rocket::http::ContentType;
+        use std::io::Cursor;
+
+        let ct = self.0.as_ref().path.extension()
+          .and_then(|ext| ContentType::from_extension(&ext.to_string_lossy()));
+
+        let mut response = rocket::Response::build()
+            .header(ContentType::Binary)
+            .sized_body(self.0.as_ref().data.len(), Cursor::new(self))
+            .ok()?;
+
+        if let Some(ct) = ct {
+            response.set_header(ct);
         }
 
         Ok(response)
@@ -28,53 +46,85 @@ impl<'r> rocket::response::Responder<'r, 'static> for MemoryFile {
 }
 
 #[get("/<path..>")]
-fn static_files(mut path: PathBuf) -> Result<MemoryFile, Status> {
-    lazy_static::lazy_static! {
-        static ref MAIN_PAGE: Vec<(PathBuf, Box<[u8]>)> = {
-            let mut reader = sevenz_rust2::ArchiveReader::new(
-                std::io::Cursor::new(WEB_STATIC),
-                sevenz_rust2::Password::empty(),
-            )
-            .unwrap();
-            let mut pages: Vec<(PathBuf, Box<[u8]>)> = vec![];
-            let _ = reader.for_each_entries(|entry, reader| {
-                if entry.is_directory() {
-                    return Ok(true);
-                }
-
-                let mut buffer: Vec<u8> = vec![];
-                reader.read_to_end(&mut buffer).unwrap();
-                buffer.shrink_to_fit();
-                pages.push((PathBuf::from(entry.name()), buffer.into_boxed_slice()));
-
+fn static_files(path: PathBuf) -> Result<MemoryFile, Status> {
+    fn compute_static_pages() -> Vec<Arc<Storage>> {
+        let mut reader = sevenz_rust2::ArchiveReader::new(
+            std::io::Cursor::new(WEB_STATIC),
+            sevenz_rust2::Password::empty(),
+        )
+        .unwrap();
+        let mut pages: Vec<Arc<Storage>> = vec![];
+        let _ = reader.for_each_entries(|entry, reader| {
+            if entry.is_directory() {
                 return Ok(true);
-            });
-
-            #[cfg(debug_assertions)] {
-                let mut msg = String::from("Loading static files: ");
-                for (path, data) in pages.iter() {
-                    msg.push_str("\n- ");
-                    msg.push_str(path.as_os_str().to_str().unwrap());
-                    msg.push_str(": ");
-                    msg.push_str(&data.len().to_string());
-                    msg.push_str(" bytes");
-                }
-                logging!("UI", "{}", msg);
             }
 
-            pages.shrink_to_fit();
-            pages
+            let mut buffer: Vec<u8> = vec![];
+            reader.read_to_end(&mut buffer).unwrap();
+            pages.push(Arc::new(Storage {
+                path: PathBuf::from(entry.name()),
+                data: buffer.into_boxed_slice(),
+            }));
+
+            return Ok(true);
+        });
+
+        pages.shrink_to_fit();
+        return pages;
+    }
+
+    use std::sync::mpsc::{self, Sender};
+    lazy_static::lazy_static! {
+        static ref MAIN_PAGE: RwLock<Option<(Sender<()>, Vec<Arc<Storage>>)>> = RwLock::new(None);
+    }
+
+    fn respond(mut path: PathBuf, storages: &Vec<Arc<Storage>>) -> Result<MemoryFile, Status> {
+        if path.as_os_str().is_empty() {
+            path = PathBuf::from("_.html");
+        }
+        return match storages.iter().find(|storage| path == storage.path) {
+            Some(storage) => Ok(MemoryFile(storage.clone())),
+            None => Err(Status { code: 404 }),
         };
     }
 
-    if path.as_os_str().is_empty() {
-        path = PathBuf::from("_.html");
-    }
+    let lock = MAIN_PAGE.read().unwrap();
+    match lock.as_ref() {
+        Some((sender, storages)) => {
+            let _ = sender.send(());
+            return respond(path, storages);
+        }
+        None => {
+            drop(lock);
 
-    return match MAIN_PAGE.iter().find(|(entry, _)| *entry == path) {
-        Some((_, data)) => Ok(MemoryFile(path, data)),
-        None => Err(Status { code: 404 }),
-    };
+            let mut lock = MAIN_PAGE.write().unwrap();
+            match lock.as_ref() {
+                Some((sender, storages)) => {
+                    let _ = sender.send(());
+                     return respond(path, storages);
+                },
+                None => {
+                    let pages = compute_static_pages();
+                    let respond = respond(path, &pages);
+
+                    let (sender, receiver) = mpsc::channel();
+                    thread::spawn(move || {
+                        loop {
+                            if let Err(_) = receiver.recv_timeout(Duration::from_secs(60)) {
+                                let mut lock = MAIN_PAGE.write().unwrap();
+                                logging!("UI", "Invaliding static page cache to reduce memory usage.");
+                                *lock = None;
+                                return;
+                            }
+                        }
+                    });
+                    
+                    *lock = Some((sender, pages));
+                    return respond;
+                }
+            }
+        }
+    }
 }
 
 #[get("/state")]
@@ -161,7 +211,7 @@ pub async fn server_main(port_callback: mpsc::Sender<u16>, daemon: bool) {
                     ":",
                     "{}",
                     json!({
-                        "version": 1, 
+                        "version": 1,
                         "url": format!("http://127.0.0.1:{}/", port)}
                     )
                 );
@@ -182,7 +232,7 @@ pub async fn server_main(port_callback: mpsc::Sender<u16>, daemon: bool) {
                                 return;
                             }
 
-                           thread::sleep(Duration::from_millis(200));
+                            thread::sleep(Duration::from_millis(200));
                         }
                     });
                 }
