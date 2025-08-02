@@ -161,6 +161,11 @@ fn download_log() -> std::fs::File {
     return std::fs::File::open((*LOGGING_FILE).clone()).unwrap();
 }
 
+#[get("/panic")]
+fn panic() {
+    panic!();
+}
+
 #[get("/meta")]
 fn get_meta() -> Json<Value> {
     return Json(json!({
@@ -200,6 +205,7 @@ pub async fn server_main(port_callback: mpsc::Sender<u16>, daemon: bool) {
             download_log,
             static_files,
             get_meta,
+            panic,
         ],
     )
     .attach(rocket::fairing::AdHoc::on_liftoff(

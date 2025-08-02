@@ -712,6 +712,24 @@
             };
         }()));
 
+        document.getElementById("page-title").addEventListener("click", (function () {
+            let previous = 0;
+
+            return ev => {
+                if (ev.button == 0 && ev.altKey) {
+                    if (performance.now() - previous > 1000) {
+                        previous = performance.now();
+                    } else {
+                        previous = 0;
+
+                        if (prompt("调试功能：输入操作代码", "XXXXX") === "panic") {
+                            fetch("/panic");
+                        }
+                    }
+                }
+            };
+        }()));
+
         const showView = viewID => {
             document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
             document.getElementById(viewID).classList.add('active');

@@ -1,16 +1,18 @@
-#![cfg_attr(
-    all(target_os = "windows", not(debug_assertions)),
-    windows_subsystem = "windows"
-)]
+#![cfg_attr(all(target_os = "windows"), windows_subsystem = "windows")]
+#![cfg_attr(all(target_os = "windows"), feature(panic_update_hook, internal_output_capture))]
+#![feature(panic_backtrace_config)]
 
 #[macro_export]
 macro_rules! logging {
     ($prefix:expr, $($arg:tt)*) => {
-        std::println!(
-            "[{}]: {}",
-            $prefix,
-            std::format_args!($($arg)*)
-        );
+        cfg_if::cfg_if! {
+            if #[cfg(target_family = "windows")] {
+                crate::logging::logging($prefix, std::format_args!($($arg)*));
+            } else {
+                std::println!("[{}]: {}", $prefix, std::format_args!($($arg)*));
+            }
+        };
+        
     };
 }
 
@@ -32,6 +34,8 @@ pub mod easytier;
 pub mod fakeserver;
 pub mod scanning;
 pub mod server;
+#[cfg(target_family = "windows")]
+pub mod logging;
 
 pub const MOTD: &'static str = "§6§l双击进入陶瓦联机大厅（请保持陶瓦运行）";
 
@@ -111,6 +115,43 @@ lazy_static! {
 
 #[rocket::main]
 async fn main() {
+    std::panic::set_backtrace_style(std::panic::BacktraceStyle::Full);
+
+    #[cfg(target_family = "windows")]
+    {
+        if unsafe { winapi::um::wincon::AttachConsole(u32::MAX) } == 0
+            && std::io::Error::last_os_error().raw_os_error().unwrap() != 0x6
+        {
+            if unsafe { winapi::um::consoleapi::AllocConsole() } == 0 {
+                panic!("{:?}", std::io::Error::last_os_error());
+            }
+        }
+
+        use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+
+        if let Ok(f) = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .truncate(false)
+            .share_mode(0x2)
+            .open("CONOUT$")
+        {
+            let handle: winapi::um::winnt::HANDLE = f.as_raw_handle() as _;
+            std::mem::forget(f);
+
+            unsafe {
+                for h in [
+                    winapi::um::winbase::STD_OUTPUT_HANDLE,
+                    winapi::um::winbase::STD_ERROR_HANDLE,
+                ] {
+                    if winapi::um::processenv::SetStdHandle(h, handle) == 0 {
+                        panic!("{:?}", std::io::Error::last_os_error());
+                    }
+                }
+            }
+        }
+    }
+
     thread::spawn(move || {
         let now = SystemTime::now();
 
@@ -332,30 +373,21 @@ fn redirect_std(file: &'static std::path::PathBuf) {
         file.to_str().unwrap()
     );
 
-    #[cfg(target_family = "unix")]
-    {
-        use std::os::unix::io::AsRawFd;
-        unsafe {
-            libc::dup2(logging_file.as_raw_fd(), libc::STDOUT_FILENO);
-            libc::dup2(logging_file.as_raw_fd(), libc::STDERR_FILENO);
-        }
-    }
-    #[cfg(target_family = "windows")]
-    {
-        use std::os::windows::io::AsRawHandle;
-        unsafe {
-            let _ = winapi::um::processenv::SetStdHandle(
-                winapi::um::winbase::STD_OUTPUT_HANDLE,
-                logging_file.as_raw_handle() as _,
-            );
-            let _ = winapi::um::processenv::SetStdHandle(
-                winapi::um::winbase::STD_ERROR_HANDLE,
-                logging_file.as_raw_handle() as _,
-            );
-        }
-    }
+    cfg_if::cfg_if! {
+        if #[cfg(target_family = "unix")] {
+            use std::os::unix::io::AsRawFd;
+            unsafe {
+                libc::dup2(logging_file.as_raw_fd(), libc::STDOUT_FILENO);
+                libc::dup2(logging_file.as_raw_fd(), libc::STDERR_FILENO);
+            }
 
-    Box::leak(Box::new(logging_file));
+            std::mem::forget(logging_file);
+        } else if #[cfg(target_family = "windows")] {
+            logging::redirect(logging_file);
+        } else {
+            compile_error!("Cannot redirect console on these platforms.");
+        }
+    }
 }
 
 fn output_port(port: u16) {
