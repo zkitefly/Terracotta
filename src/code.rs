@@ -1,5 +1,8 @@
 use core::panic;
-use std::{env, net::{Ipv4Addr, UdpSocket}};
+use std::{
+    env,
+    net::{Ipv4Addr, UdpSocket},
+};
 
 use num_bigint::BigUint;
 use rand_core::{OsRng, TryRngCore};
@@ -181,7 +184,7 @@ impl Room {
 
             static ref DEFAULT_ARGUMENTS: Vec<&'static str> = vec![
                 "--no-tun",
-                "--compression=zstd",
+                "--compression", "zstd",
                 "--multi-thread",
                 "--latency-first",
                 "--enable-kcp-proxy",
