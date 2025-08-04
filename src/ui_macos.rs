@@ -74,7 +74,7 @@ pub fn open(url: String) {
         let window: *mut AnyObject = msg_send![
             window,
             initWithContentRect: frame,
-            styleMask: NSWindowStyleMask::Resizable | NSWindowStyleMask::Titled | NSWindowStyleMask::Closable,
+            styleMask: NSWindowStyleMask::Titled | NSWindowStyleMask::Closable | NSWindowStyleMask::Miniaturizable | NSWindowStyleMask::Resizable,
             backing: NSBackingStoreType::Buffered,
             defer: Bool::NO
         ];

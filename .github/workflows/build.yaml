@@ -172,6 +172,7 @@ jobs:
             --version "1.0" \
             --install-location "/" \
             --scripts build/macos/scripts \
+            --component-plist build/macos/terracotta.plist \
             "$PKG_OUTPUT"
           zip -q - $PKG_OUTPUT | gh-actions-artifact-client.js upload "terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.pkg"
         done

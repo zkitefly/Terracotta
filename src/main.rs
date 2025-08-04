@@ -190,12 +190,61 @@ async fn main_general() {
 
             cfg_if::cfg_if! {
                 if #[cfg(target_os = "macos")] {
-                    let _ = native_dialog::DialogBuilder::message()
-                        .set_level(native_dialog::MessageLevel::Error)
-                        .set_title("Terracotta | 陶瓦联机")
-                        .set_text("未检测到后台守护进程，请尝试重启电脑，或与开发者联系。")
-                        .alert()
-                        .show();
+                    drop(state);
+
+                    fn new_error<E>(error: E) -> Option<std::io::Error>
+                    where
+                        E: Into<Box<dyn std::error::Error + Send + Sync>>
+                    {
+                        return Some(std::io::Error::new(std::io::ErrorKind::TimedOut, error));
+                    }
+
+                    let mut error = match std::process::Command::new("launchctl")
+                        .args(["bootstrap", &format!("gui/{}", unsafe { libc::getuid() }), "/Library/LaunchAgents/net.burningtnt.terracotta.daemon.plist"])
+                        .spawn() {
+                        Ok(mut process) => {
+                            let start = SystemTime::now();
+                            loop {
+                                break match process.try_wait() {
+                                    Ok(Some(status)) if status.success() => None,
+                                    Ok(Some(status)) => new_error(format!("Process 'launchctl' failed: {:?}", status)),
+
+                                    Ok(None) if SystemTime::now().duration_since(start).is_ok_and(|d| d >= Duration::from_secs(3)) =>
+                                        new_error("Process 'launchctl' got stuck after 3s."),
+                                    Ok(None) => continue,
+
+                                    Err(e) => Some(e),
+                                };
+                            }
+                        },
+                        Err(e) => Some(e)
+                    };
+
+                    if let None = error {
+                        for timeout in [200, 200, 400, 800, 1600] {
+                            thread::sleep(Duration::from_millis(timeout));
+
+                            let state = Lock::get_state();
+                            if let Lock::Secondary { port } = &state {
+                                logging!("UI", "Running in secondary mode, port={}.", port);
+
+                                main_secondary(*port);
+                                return;
+                            } else {
+                                error = new_error("Cannot detect daemon process after 2000s.");
+                            }
+                        }
+                    }
+
+                    if let Some(error) = error {
+                        let _ = native_dialog::DialogBuilder::message()
+                            .set_level(native_dialog::MessageLevel::Error)
+                            .set_title("Terracotta | 陶瓦联机")
+                            .set_text(format!("未能拉起后台守护进程，请尝试重启电脑，或与开发者联系。\n{}", error))
+                            .alert()
+                            .show();
+                        return;
+                    }
                 } else {
                     main_single(Some(state), false).await;
                 }
@@ -205,10 +254,6 @@ async fn main_general() {
             logging!("UI", "Running in secondary mode, port={}.", port);
 
             main_secondary(*port);
-
-            if cfg!(target_os = "macos") {
-                thread::sleep(Duration::from_secs(5));
-            }
         }
         Lock::Unknown => {
             logging!(
@@ -279,7 +324,7 @@ fn main_secondary(port: u16) {
             let _ = open::that(format!("http://127.0.0.1:{}/", port));
         }
     }
-    
+
     output_port(port);
 }
 
