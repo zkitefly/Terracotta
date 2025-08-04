@@ -156,13 +156,13 @@ jobs:
 
         for classifier in "${classifiers[@]}"; do
           TEMP_DIR=$(mktemp -d)
-          mkdir -p "$TEMP_DIR/Applications"
-          cp -R build/macos/terracotta.app "$TEMP_DIR/Applications"
-          mkdir -p "$TEMP_DIR/Applications/terracotta.app/Contents/MacOS/"
+          mkdir -p "$TEMP_DIR"
+          cp -R build/macos/terracotta.app "$TEMP_DIR"
+          mkdir -p "$TEMP_DIR/terracotta.app/Contents/MacOS/"
           gh-actions-artifact-client.js download "terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.tar" >> "terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.tar.zip"
           unzip -p "terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.tar.zip" \
             | gtar -xOf - \
-            >> "$TEMP_DIR/Applications/terracotta.app/Contents/MacOS/terracotta"
+            >> "$TEMP_DIR/terracotta.app/Contents/MacOS/terracotta"
         
           chmod -R 755 "$TEMP_DIR/"
           PKG_OUTPUT="terracotta-${TERRACOTTA_VERSION}-macos-${classifier}.pkg"
@@ -170,7 +170,7 @@ jobs:
             --root "$TEMP_DIR" \
             --identifier "net.burningtnt.terracotta" \
             --version "1.0" \
-            --install-location "/" \
+            --install-location "/Applications" \
             --scripts build/macos/scripts \
             --component-plist build/macos/terracotta.plist \
             "$PKG_OUTPUT"
