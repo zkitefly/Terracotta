@@ -14,33 +14,16 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Room {
-    name: [u8; 15],
-    secret: [u8; 10],
     pub code: String,
     pub port: u16,
-    pub host: bool,
+    network_name: String,
+    network_secret: String,
 }
 
 static CHARS: &[u8] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ".as_bytes();
 
-fn lookup_char(char: char) -> Option<u8> {
-    let char = match char {
-        'I' => '1',
-        'O' => '0',
-        _ => char,
-    };
-
-    for j in 0..34 {
-        if CHARS[j] as char == char {
-            return Some(j as u8);
-        }
-    }
-
-    return None;
-}
-
 fn rem64(value: &BigUint) -> usize {
-    return (value % (34 as u32)).try_into().unwrap();
+    return (value % 34u32).try_into().unwrap();
 }
 
 impl Room {
@@ -53,7 +36,7 @@ impl Room {
             value = (value << 8) + buffer[i];
         }
 
-        value = value / (65536 as u32) * (65536 as u32) + port;
+        value = value / (65536u32) * (65536u32) + port;
 
         let mut name: [u8; 15] = [0; 15];
         let mut secret: [u8; 10] = [0; 10];
@@ -61,12 +44,12 @@ impl Room {
         for i in 0..15 {
             name[i] = CHARS[rem64(&value)];
             checking = (rem64(&value) + checking) % 34;
-            value /= 34 as u32;
+            value /= 34u32;
         }
         for i in 0..9 {
             secret[i] = CHARS[rem64(&value)];
             checking = (rem64(&value) + checking) % 34;
-            value /= 34 as u32;
+            value /= 34u32;
         }
         secret[9] = CHARS[checking];
 
@@ -85,120 +68,148 @@ impl Room {
         code[23] = b'-';
         code[24..29].copy_from_slice(&secret[5..10]);
 
+        name.make_ascii_lowercase();
+        secret.make_ascii_lowercase();
+
         let room = Room {
-            name: name,
-            secret: secret,
             code: String::from_utf8(code.to_vec()).unwrap(),
             port: port,
-            host: true,
+
+            network_name: "terracotta-mc-".to_string() + str::from_utf8(&name).unwrap(),
+            network_secret: String::from_utf8(secret.to_vec()).unwrap(),
         };
 
         return room;
     }
 
-    pub fn from(code: &String) -> Result<Room, String> {
+    pub fn from(code: &String) -> Option<Room> {
         let chars: Vec<char> = code.to_ascii_uppercase().chars().collect::<Vec<_>>();
         if chars.len() < 29 {
-            return Err("Not enough data.".to_string());
+            return None;
+        }
+
+        static PARSER: [(fn(&[char]) -> Option<Room>, usize); 1] = [
+            (Room::from_terracotta, 29)
+            ];
+
+        for (parse, length) in PARSER {
+            for start in 0..=(chars.len() - length) {
+                if let Some(room) = parse(&chars[start..start + 29]) {
+                    return Some(room);
+                }
+            }
+        }
+
+        return None;
+    }
+
+    fn from_terracotta(chars: &[char]) -> Option<Room> {
+        fn lookup_char(char: char) -> Option<u8> {
+            let char = match char {
+                'I' => '1',
+                'O' => '0',
+                _ => char,
+            };
+
+            for j in 0..34 {
+                if CHARS[j] as char == char {
+                    return Some(j as u8);
+                }
+            }
+
+            return None;
         }
 
         let mut array: [u8; 25] = [0; 25];
-        'moving: for start in 0..=(chars.len() - 29) {
-            for i in 0..5 {
-                for j in 0..5 {
-                    if let Some(char) = lookup_char(chars[start + i * 6 + j]) {
-                        array[i * 5 + j] = char;
-                    } else {
-                        continue 'moving;
-                    }
-                }
 
-                if i != 4 && chars[start + i * 6 + 5] != '-' {
-                    continue 'moving;
+        for i in 0..5 {
+            for j in 0..5 {
+                if let Some(char) = lookup_char(chars[i * 6 + j]) {
+                    array[i * 5 + j] = char;
+                } else {
+                    return None;
                 }
             }
 
-            let mut checking: u8 = 0;
-            for i in 0..24 {
-                checking = (checking + array[i]) % 34;
+            if i != 4 && chars[i * 6 + 5] != '-' {
+                return None;
             }
-            if checking != array[24] {
-                continue 'moving;
-            }
-
-            return Ok(Room {
-                name: {
-                    let mut name: [u8; 15] = [0; 15];
-                    for i in 0..15 {
-                        name[i] = CHARS[array[i] as usize];
-                    }
-                    name
-                },
-                secret: {
-                    let mut secret: [u8; 10] = [0; 10];
-                    for i in 0..10 {
-                        secret[i] = CHARS[array[i + 15] as usize];
-                    }
-                    secret
-                },
-                code: {
-                    let mut code = String::from("");
-                    for i in 0..25 {
-                        code.push(CHARS[array[i] as usize] as char);
-                        if i == 4 || i == 9 || i == 14 || i == 19 {
-                            code.push('-');
-                        }
-                    }
-                    code
-                },
-                port: {
-                    let mut value = BigUint::ZERO;
-                    for i in 0..25 {
-                        // floor(log(34, 65536)) = 4
-                        value += BigUint::from(34 as u8).pow(i as u32) * array[i];
-                    }
-
-                    (value % (65536 as u32)).try_into().unwrap()
-                },
-                host: false,
-            });
         }
 
-        return Err("No Room code found.".to_string());
+        let mut checking: u8 = 0;
+        for i in 0..24 {
+            checking = (checking + array[i]) % 34;
+        }
+        if checking != array[24] {
+            return None;
+        }
+
+        return Some(Room {
+            code: {
+                let mut code = String::with_capacity(29);
+                for i in 0..25 {
+                    code.push(CHARS[array[i] as usize] as char);
+                    if i == 4 || i == 9 || i == 14 || i == 19 {
+                        code.push('-');
+                    }
+                }
+                code
+            },
+            port: {
+                let mut value = BigUint::ZERO;
+                for i in 0..25 {
+                    // floor(log(34, 65536)) = 4
+                    value += BigUint::from(34 as u8).pow(i as u32) * array[i];
+                }
+
+                (value % (65536 as u32)).try_into().unwrap()
+            },
+            network_name: {
+                let mut name: [u8; 15] = [0; 15];
+                for i in 0..15 {
+                    name[i] = CHARS[array[i] as usize];
+                }
+                name.make_ascii_lowercase();
+                "terracotta-mc-".to_string() + str::from_utf8(&name).unwrap()
+            },
+            network_secret: {
+                let mut secret: [u8; 10] = [0; 10];
+                for i in 0..10 {
+                    secret[i] = CHARS[array[i + 15] as usize];
+                }
+                secret.make_ascii_lowercase();
+                String::from_utf8(secret.to_vec()).unwrap()
+            },
+        });
     }
 
-    pub fn start(&self, motd: &'static str) -> (Easytier, Option<FakeServer>) {
-        lazy_static::lazy_static! {
-            static ref REPLAY_SERVERS: Vec<&'static str> = vec![
-                "tcp://public.easytier.top:11010",
-                "tcp://ah.nkbpal.cn:11010",
-                "tcp://turn.hb.629957.xyz:11010",
-                "tcp://turn.js.629957.xyz:11012",
-                "tcp://sh.993555.xyz:11010",
-                "tcp://turn.bj.629957.xyz:11010",
-                "tcp://et.sh.suhoan.cn:11010",
-                "tcp://et-hk.clickor.click:11010",
-                "tcp://et.01130328.xyz:11010",
-                "tcp://et.gbc.moe:11011",
-            ];
-
-            static ref DEFAULT_ARGUMENTS: Vec<&'static str> = vec![
-                "--no-tun",
-                "--compression", "zstd",
-                "--multi-thread",
-                "--latency-first",
-                "--enable-kcp-proxy",
-            ];
-        }
+    fn compute_network_arguments(name: &String, secret: &String) -> Vec<String> {
+        static REPLAY_SERVERS: [&'static str; 10] = [
+            "tcp://public.easytier.top:11010",
+            "tcp://ah.nkbpal.cn:11010",
+            "tcp://turn.hb.629957.xyz:11010",
+            "tcp://turn.js.629957.xyz:11012",
+            "tcp://sh.993555.xyz:11010",
+            "tcp://turn.bj.629957.xyz:11010",
+            "tcp://et.sh.suhoan.cn:11010",
+            "tcp://et-hk.clickor.click:11010",
+            "tcp://et.01130328.xyz:11010",
+            "tcp://et.gbc.moe:11011",
+        ];
+        static DEFAULT_ARGUMENTS: [&'static str; 6] = [
+            "--no-tun",
+            "--compression",
+            "zstd",
+            "--multi-thread",
+            "--latency-first",
+            "--enable-kcp-proxy",
+        ];
 
         let mut args = vec![
             "--network-name".to_string(),
-            format!(
-                "terracotta-mc-{}",
-                String::from_utf8_lossy(&self.name).to_ascii_lowercase()
-            ),
+            name.clone(),
             "--network-secret".to_string(),
-            String::from_utf8_lossy(&self.secret).to_ascii_lowercase(),
+            secret.clone(),
         ];
 
         for replay in REPLAY_SERVERS.iter() {
@@ -209,64 +220,72 @@ impl Room {
             args.push(arg.to_string());
         }
 
-        let fake_server = if self.host {
-            args.push("--ipv4".to_string());
-            args.push("10.144.144.1".to_string());
+        return args;
+    }
 
-            None
-        } else {
-            lazy_static::lazy_static! {
-                static ref ONLY_V6: bool = {
-                    let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None).unwrap();
-                    if cfg!(debug_assertions) && cfg!(target_family = "windows") {
-                        // Socket2 is having a heated debate on whether only_v6 should return an 4 bytes buffer rather than 1.
-                        // See https://github.com/rust-lang/socket2/pull/603
-                        // For now, we catch this panic information where debug assertions are enabled and we are on Windows.
-                        if let Ok(v) = std::panic::catch_unwind(|| socket.only_v6()) {
-                            v.unwrap()
-                        } else if let Ok(v) = env::var("TERRACOTTA_ONLY_V6") {
-                            match v.as_str() {
-                                "true" | "1" | "yes" => true,
-                                "false" | "0" | "no" => false,
-                                _ => panic!("Invalid value for TERRACOTTA_ONLY_V6: {}", v),
-                            }
-                        } else {
-                            panic!(
-                                "Due to https://github.com/rust-lang/socket2/pull/603, \
-                                 we cannot determin the only_v6 socket setting in developing environment. \
-                                 Please set the environment variable TERRACOTTA_ONLY_V6 to true or false."
-                            );
+    pub fn start_host(&self) -> Easytier {
+        let mut args = Self::compute_network_arguments(&self.network_name, &self.network_secret);
+        args.push("--ipv4".to_string());
+        args.push("10.144.144.1".to_string());
+
+        return easytier::FACTORY.create(args);
+    }
+
+    pub fn start_guest(&self, motd: &'static str) -> (Easytier, FakeServer) {
+        let mut args = Self::compute_network_arguments(&self.network_name, &self.network_secret);
+
+        lazy_static::lazy_static! {
+            static ref ONLY_V6: bool = {
+                let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None).unwrap();
+                if cfg!(debug_assertions) && cfg!(target_family = "windows") {
+                    // Socket2 is having a heated debate on whether only_v6 should return an 4 bytes buffer rather than 1.
+                    // See https://github.com/rust-lang/socket2/pull/603
+                    // For now, we catch this panic information where debug assertions are enabled and we are on Windows.
+                    if let Ok(v) = std::panic::catch_unwind(|| socket.only_v6()) {
+                        v.unwrap()
+                    } else if let Ok(v) = env::var("TERRACOTTA_ONLY_V6") {
+                        match v.as_str() {
+                            "true" | "1" | "yes" => true,
+                            "false" | "0" | "no" => false,
+                            _ => panic!("Invalid value for TERRACOTTA_ONLY_V6: {}", v),
                         }
                     } else {
-                        socket.only_v6().unwrap()
+                        panic!(
+                            "Due to https://github.com/rust-lang/socket2/pull/603, \
+                             we cannot determin the only_v6 socket setting in developing environment. \
+                             Please set the environment variable TERRACOTTA_ONLY_V6 to true or false."
+                        );
                     }
-                };
-            }
-
-            let port = if let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
-                && let Ok(address) = socket.local_addr()
-            {
-                address.port()
-            } else {
-                35781
+                } else {
+                    socket.only_v6().unwrap()
+                }
             };
+        }
 
-            args.push("-d".to_string());
-            args.push(format!(
-                "--port-forward=tcp://[::0]:{}/10.144.144.1:{}",
-                port, self.port
-            ));
-
-            if *ONLY_V6 {
-                args.push(format!(
-                    "--port-forward=tcp://0.0.0.0:{}/10.144.144.1:{}",
-                    port, self.port
-                ));
-            }
-
-            Some(fakeserver::create(port, motd))
+        let local_port = if let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
+            && let Ok(address) = socket.local_addr()
+        {
+            address.port()
+        } else {
+            35781
         };
 
-        return (easytier::FACTORY.create(args), fake_server);
+        args.push("-d".to_string());
+        args.push(format!(
+            "--port-forward=tcp://[::0]:{}/10.144.144.1:{}",
+            local_port, self.port
+        ));
+
+        if *ONLY_V6 {
+            args.push(format!(
+                "--port-forward=tcp://0.0.0.0:{}/10.144.144.1:{}",
+                local_port, self.port
+            ));
+        }
+
+        return (
+            easytier::FACTORY.create(args),
+            fakeserver::create(local_port, motd),
+        );
     }
 }

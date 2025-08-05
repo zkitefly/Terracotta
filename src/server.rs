@@ -154,7 +154,7 @@ fn set_state_scanning() -> Status {
 #[get("/state/guesting?<room>")]
 fn set_state_guesting(room: Option<String>) -> Status {
     if let Some(room) = room
-        && let Ok(room) = Room::from(&room)
+        && let Some(room) = Room::from(&room)
     {
         core::set_guesting(room);
         return Status::Ok;

@@ -242,7 +242,7 @@ pub fn set_scanning() {
                 );
 
                 let index = state.set(AppState::Hosting {
-                    easytier: room.start(MOTD).0,
+                    easytier: room.start_host(),
                     room: room,
                 });
 
@@ -301,9 +301,8 @@ pub fn set_guesting(room: Room) {
 
     let state = AppState::touch();
 
-    let (easytier, server) = room.start(MOTD);
-    let server = server.unwrap();
-    let port = server.port;
+    let (easytier, server) = room.start_guest(MOTD);
+    let local_port = server.port;
 
     let index = state.set(AppState::Guesting {
         easytier: easytier,
@@ -328,7 +327,7 @@ pub fn set_guesting(room: Room) {
 
         let mut ok = false;
         for _ in 0..5 {
-            if check_conn(port) {
+            if check_conn(local_port) {
                 ok = true;
                 break;
             }
@@ -344,7 +343,7 @@ pub fn set_guesting(room: Room) {
         }
 
         if !ok {
-            logging!("Core", "Cannot connect to room, port = {}.", port);
+            logging!("Core", "Cannot connect to room, port = {}.", local_port);
             state.set(AppState::Exception {
                 kind: ExceptionType::PingHostFail,
             });
@@ -360,7 +359,7 @@ pub fn set_guesting(room: Room) {
             }
         });
 
-        logging!("Core", "Room is ready, port = {}.", port);
+        logging!("Core", "Room is ready, port = {}.", local_port);
 
         let mut count: u8 = 0;
         loop {
@@ -368,7 +367,7 @@ pub fn set_guesting(room: Room) {
                 return;
             }
 
-            if check_conn(port) {
+            if check_conn(local_port) {
                 count = 0;
 
                 let state = AppState::touch();
@@ -384,7 +383,7 @@ pub fn set_guesting(room: Room) {
                         return;
                     }
 
-                    logging!("Core", "Connection to room has lost, port = {}.", port);
+                    logging!("Core", "Connection to room has lost, port = {}.", local_port);
                     state.set(AppState::Exception {
                         kind: ExceptionType::PingHostRst,
                     });

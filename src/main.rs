@@ -28,7 +28,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::mpsc,
     thread,
-    time::{Duration, SystemTime},
+    time::SystemTime,
 };
 
 pub mod code;
@@ -158,9 +158,6 @@ async fn main() {
         }
     }
 
-    #[cfg(not(target_os = "macos"))]
-    cleanup();
-
     fn main_panic(arguments: Vec<String>) {
         logging!("UI", "Unknown arguments: {}", arguments.join(", "));
     }
@@ -169,12 +166,15 @@ async fn main() {
     match arguments.len() {
         0 => main_general().await,
         1 => match arguments[0].as_str() {
+            #[cfg(target_os = "macos")]
             "--daemon" => main_daemon().await,
             "--help" => {
                 println!("Welcoming using Terracotta | 陶瓦联机");
                 println!("Usage: terracotta [OPTIONS]");
                 println!("Options:");
-                println!("  --daemon: Run in daemon mode.");
+                println!("  --help: Print this help message");
+                #[cfg(target_os = "macos")]
+                println!("  --daemon: [INTERNAL USR ONLY] Run in daemon mode.");
             }
             _ => main_panic(arguments),
         },
@@ -182,26 +182,49 @@ async fn main() {
     };
 }
 
-async fn main_general() {
-    let state = Lock::get_state();
-    match &state {
-        Lock::Single { .. } => {
-            logging!("UI", "Running in server mode.");
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "macos")] {
+        use std::time::Duration;
 
-            cfg_if::cfg_if! {
-                if #[cfg(target_os = "macos")] {
+        async fn main_daemon() {
+            let state = Lock::get_state();
+            match &state {
+                Lock::Single { .. } => {
+                    logging!("UI", "Running in daemon server mode.");
+                    cleanup();
+
+                    main_single(Some(state), true).await;
+                }
+                Lock::Secondary { .. } => {
+                    panic!("Deamon must run in server mode, but found secondary mode");
+                }
+                Lock::Unknown => {
+                    panic!("Deamon must run in server mode, but found unknown mode");
+                }
+            };
+        }
+
+        async fn main_general() {
+            fn new_error<E>(error: E) -> Option<std::io::Error>
+            where
+                E: Into<Box<dyn std::error::Error + Send + Sync>>
+            {
+                return Some(std::io::Error::new(std::io::ErrorKind::TimedOut, error));
+            }
+            
+            let state = Lock::get_state();
+            let mut error = match &state {
+                Lock::Single { .. } => {
                     drop(state);
 
-                    fn new_error<E>(error: E) -> Option<std::io::Error>
-                    where
-                        E: Into<Box<dyn std::error::Error + Send + Sync>>
+                    match std::process::Command::new("launchctl")
+                            .args([
+                                "bootstrap",
+                                &format!("gui/{}", unsafe { libc::getuid() }),
+                                "/Library/LaunchAgents/net.burningtnt.terracotta.daemon.plist"
+                            ])
+                            .spawn()
                     {
-                        return Some(std::io::Error::new(std::io::ErrorKind::TimedOut, error));
-                    }
-
-                    let mut error = match std::process::Command::new("launchctl")
-                        .args(["bootstrap", &format!("gui/{}", unsafe { libc::getuid() }), "/Library/LaunchAgents/net.burningtnt.terracotta.daemon.plist"])
-                        .spawn() {
                         Ok(mut process) => {
                             let start = SystemTime::now();
                             loop {
@@ -218,76 +241,66 @@ async fn main_general() {
                             }
                         },
                         Err(e) => Some(e)
-                    };
-
-                    if let None = error {
-                        for timeout in [200, 200, 400, 800, 1600] {
-                            thread::sleep(Duration::from_millis(timeout));
-
-                            let state = Lock::get_state();
-                            if let Lock::Secondary { port } = &state {
-                                logging!("UI", "Running in secondary mode, port={}.", port);
-
-                                main_secondary(*port);
-                                return;
-                            } else {
-                                error = new_error("Cannot detect daemon process after 2000s.");
-                            }
-                        }
                     }
+                },
+                Lock::Secondary { port } => {
+                    logging!("UI", "Running in secondary mode, port={}.", port);
+                    main_secondary(*port);
+                    return;
+                },
+                Lock::Unknown => {
+                    drop(state);
+                    new_error("Cannot determin global lock state.")
+                }
+            };
 
-                    if let Some(error) = error {
-                        let _ = native_dialog::DialogBuilder::message()
-                            .set_level(native_dialog::MessageLevel::Error)
-                            .set_title("Terracotta | 陶瓦联机")
-                            .set_text(format!("未能拉起后台守护进程，请尝试重启电脑，或与开发者联系。\n{}", error))
-                            .alert()
-                            .show();
+            if let None = error {
+                for timeout in [200, 200, 400, 800, 1600] {
+                    thread::sleep(Duration::from_millis(timeout));
+
+                    let state = Lock::get_state();
+                    if let Lock::Secondary { port } = &state {
+                        logging!("UI", "Running in secondary mode, port={}.", port);
+
+                        main_secondary(*port);
                         return;
+                    } else {
+                        error = new_error("Cannot detect daemon process after 2000s.");
                     }
-                } else {
+                }
+            }
+
+            if let Some(error) = error {
+                let _ = native_dialog::DialogBuilder::message()
+                    .set_level(native_dialog::MessageLevel::Error)
+                    .set_title("Terracotta | 陶瓦联机")
+                    .set_text(format!("未能拉起后台守护进程，请尝试重启电脑，或与开发者联系。\n{}", error))
+                    .alert()
+                    .show();
+                return;
+            }
+        }
+    } else {
+        async fn main_general() {
+            cleanup();
+
+            let state = Lock::get_state();
+            match &state {
+                Lock::Single { .. } => {
+                    logging!("UI", "Running in server mode.");
                     main_single(Some(state), false).await;
+                },
+                Lock::Secondary { port } => {
+                    logging!("UI", "Running in secondary mode, port={}.", port);
+                    main_secondary(*port);
+                },
+                Lock::Unknown => {
+                    logging!("UI", "Running in unknown mode.");
+                    main_single(None, false).await;
                 }
             }
         }
-        Lock::Secondary { port } => {
-            logging!("UI", "Running in secondary mode, port={}.", port);
-
-            main_secondary(*port);
-        }
-        Lock::Unknown => {
-            logging!(
-                "UI",
-                "Cannot determin application mode. Fallback to server mode."
-            );
-
-            main_single(None, false).await;
-        }
-    };
-}
-
-async fn main_daemon() {
-    let state = Lock::get_state();
-    match &state {
-        Lock::Single { .. } => {
-            logging!("UI", "Running in daemon server mode.");
-            #[cfg(target_os = "macos")]
-            cleanup();
-
-            main_single(Some(state), true).await;
-        }
-        Lock::Secondary { port } => {
-            logging!("UI", "Running in daemon secondary mode, port={}.", port);
-        }
-        Lock::Unknown => {
-            logging!(
-                "UI",
-                "Cannot determin application mode. Fallback to server mode."
-            );
-
-            main_single(None, true).await;
-        }
-    };
+    }
 }
 
 async fn main_single(state: Option<Lock>, daemon: bool) {
@@ -324,8 +337,6 @@ fn main_secondary(port: u16) {
             let _ = open::that(format!("http://127.0.0.1:{}/", port));
         }
     }
-
-    output_port(port);
 }
 
 fn redirect_std(file: &'static std::path::PathBuf) {
@@ -368,17 +379,6 @@ fn redirect_std(file: &'static std::path::PathBuf) {
             compile_error!("Cannot redirect console on these platforms.");
         }
     }
-}
-
-fn output_port(port: u16) {
-    logging!(
-        ":",
-        "{}",
-        serde_json::json!({
-            "version": 1,
-            "url": format!("http://127.0.0.1:{}/", port)
-        })
-    );
 }
 
 fn cleanup() {
