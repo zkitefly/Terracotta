@@ -121,7 +121,13 @@ lazy_static! {
 
 #[rocket::main]
 async fn main() {
-    std::panic::set_backtrace_style(std::panic::BacktraceStyle::Full);
+    cfg_if::cfg_if! {
+        if #[cfg(debug_assertions)] {
+            std::panic::set_backtrace_style(std::panic::BacktraceStyle::Short);
+        } else {
+            std::panic::set_backtrace_style(std::panic::BacktraceStyle::Full);
+        }
+    }
 
     #[cfg(target_family = "windows")]
     {
