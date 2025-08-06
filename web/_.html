@@ -778,6 +778,8 @@
                             if (r.ok) {
                                 showView("guest-result-view");
                                 document.getElementById("guest-backup-address").innerText = r.url;
+                            } else {
+                                showView("guest-loading-view");
                             }
                         } else if (r.state == "exception") {
                             showView("room-error-view");
