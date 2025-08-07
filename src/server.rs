@@ -186,9 +186,14 @@ cfg_if::cfg_if! {
     }
 }
 
-#[get("/panic")]
-fn panic() {
-    panic!();
+#[get("/panic?<peaceful>")]
+fn panic(peaceful: Option<bool>) {
+    if peaceful.unwrap_or(false) {
+        logging!("Core", "Closed by web API. Shutting down.");
+        std::process::exit(0);
+    } else {
+        panic!();
+    }
 }
 
 #[get("/meta")]
@@ -210,7 +215,7 @@ fn get_meta() -> Json<Value> {
     }));
 }
 
-pub async fn server_main(port_callback: mpsc::Sender<u16>, daemon: bool) {
+pub async fn server_main(port_callback: mpsc::Sender<u16>) {
     core::ExceptionType::register_hook(|_| {
         // TODO: Send system notifications.
     });
@@ -237,27 +242,7 @@ pub async fn server_main(port_callback: mpsc::Sender<u16>, daemon: bool) {
         "Open Browser",
         move |rocket| {
             Box::pin(async move {
-                let port = rocket.config().port;
-                if !cfg!(debug_assertions) && !daemon {
-                    let _ = open::that(format!("http://127.0.0.1:{}/", port));
-                }
-                let _ = port_callback.send(port);
-
-                if !daemon {
-                    let shutdown = rocket.shutdown();
-                    thread::spawn(move || {
-                        loop {
-                            if let Some(duration) = core::get_waiting_time()
-                                && duration > Duration::from_secs(600)
-                            {
-                                shutdown.notify();
-                                return;
-                            }
-
-                            thread::sleep(Duration::from_millis(200));
-                        }
-                    });
-                }
+                let _ = port_callback.send(rocket.config().port);
             })
         },
     ))

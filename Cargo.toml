@@ -38,6 +38,9 @@ winapi = { version = "0.3.9", default-features = false, features = [
     "consoleapi",
     "sysinfoapi",
 ] }
+reqwest = { version = "0.12.22", default-features = false, features = [
+    "blocking"
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.1"

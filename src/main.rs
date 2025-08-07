@@ -25,10 +25,11 @@ use lazy_static::lazy_static;
 
 use std::{
     env, fs,
+    io::Write,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::mpsc,
     thread,
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 pub mod code;
@@ -119,6 +120,16 @@ lazy_static! {
     static ref EASYTIER_DIR: std::path::PathBuf = WORKING_DIR.join("embedded-easytier");
 }
 
+#[derive(Debug, PartialEq)]
+enum Mode {
+    General,
+    #[cfg(target_os = "macos")]
+    Daemon,
+    HMCL {
+        file: String,
+    },
+}
+
 #[rocket::main]
 async fn main() {
     cfg_if::cfg_if! {
@@ -170,7 +181,7 @@ async fn main() {
 
     let arguments = env::args().skip(1).collect::<Vec<_>>();
     match arguments.len() {
-        0 => main_general().await,
+        0 => main_general(Mode::General).await,
         1 => match arguments[0].as_str() {
             #[cfg(target_os = "macos")]
             "--daemon" => main_daemon().await,
@@ -179,8 +190,18 @@ async fn main() {
                 println!("Usage: terracotta [OPTIONS]");
                 println!("Options:");
                 println!("  --help: Print this help message");
+                println!("  --hmcl: [INTERNAL USE ONLY] For HMCL only.");
                 #[cfg(target_os = "macos")]
-                println!("  --daemon: [INTERNAL USR ONLY] Run in daemon mode.");
+                println!("  --daemon: [INTERNAL USE ONLY] Run in daemon mode.");
+            }
+            _ => main_panic(arguments),
+        },
+        2 => match arguments[0].as_str() {
+            "--hmcl" => {
+                main_general(Mode::HMCL {
+                    file: arguments[1].clone(),
+                })
+                .await
             }
             _ => main_panic(arguments),
         },
@@ -190,8 +211,6 @@ async fn main() {
 
 cfg_if::cfg_if! {
     if #[cfg(target_os = "macos")] {
-        use std::time::Duration;
-
         async fn main_daemon() {
             let state = Lock::get_state();
             match &state {
@@ -199,7 +218,7 @@ cfg_if::cfg_if! {
                     logging!("UI", "Running in daemon server mode.");
                     cleanup();
 
-                    main_single(Some(state), true).await;
+                    main_single(Some(state), Mode::Daemon).await;
                 }
                 Lock::Secondary { .. } => {
                     panic!("Deamon must run in server mode, but found secondary mode");
@@ -210,14 +229,14 @@ cfg_if::cfg_if! {
             };
         }
 
-        async fn main_general() {
+        async fn main_general(mode: Mode) {
             fn new_error<E>(error: E) -> Option<std::io::Error>
             where
                 E: Into<Box<dyn std::error::Error + Send + Sync>>
             {
                 return Some(std::io::Error::new(std::io::ErrorKind::TimedOut, error));
             }
-            
+
             let state = Lock::get_state();
             let mut error = match &state {
                 Lock::Single { .. } => {
@@ -251,7 +270,7 @@ cfg_if::cfg_if! {
                 },
                 Lock::Secondary { port } => {
                     logging!("UI", "Running in secondary mode, port={}.", port);
-                    main_secondary(*port);
+                    main_secondary(*port, mode).await;
                     return;
                 },
                 Lock::Unknown => {
@@ -268,7 +287,7 @@ cfg_if::cfg_if! {
                     if let Lock::Secondary { port } = &state {
                         logging!("UI", "Running in secondary mode, port={}.", port);
 
-                        main_secondary(*port);
+                        main_secondary(*port, mode).await;
                         return;
                     } else {
                         error = new_error("Cannot detect daemon process after 2000s.");
@@ -277,72 +296,182 @@ cfg_if::cfg_if! {
             }
 
             if let Some(error) = error {
-                let _ = native_dialog::DialogBuilder::message()
-                    .set_level(native_dialog::MessageLevel::Error)
-                    .set_title("Terracotta | 陶瓦联机")
-                    .set_text(format!("未能拉起后台守护进程，请尝试重启电脑，或与开发者联系。\n{}", error))
-                    .alert()
-                    .show();
+                if mode == Mode::General {
+                    let _ = native_dialog::DialogBuilder::message()
+                        .set_level(native_dialog::MessageLevel::Error)
+                        .set_title("Terracotta | 陶瓦联机")
+                        .set_text(format!("未能拉起后台守护进程，请尝试重启电脑，或与开发者联系。\n{}", error))
+                        .alert()
+                        .show();
+                } else {
+                    logging!("UI", "Failed to start daemon: {}", error);
+                }
                 return;
             }
         }
     } else {
-        async fn main_general() {
+        async fn main_general(mode: Mode) {
             cleanup();
 
             let state = Lock::get_state();
             match &state {
                 Lock::Single { .. } => {
                     logging!("UI", "Running in server mode.");
-                    main_single(Some(state), false).await;
+                    main_single(Some(state), mode).await;
                 },
                 Lock::Secondary { port } => {
                     logging!("UI", "Running in secondary mode, port={}.", port);
-                    main_secondary(*port);
+                    let port = *port;
+                    drop(state);
+                    main_secondary(port, mode).await;
                 },
                 Lock::Unknown => {
                     logging!("UI", "Running in unknown mode.");
-                    main_single(None, false).await;
+                    main_single(None, mode).await;
                 }
             }
         }
     }
 }
 
-async fn main_single(state: Option<Lock>, daemon: bool) {
+async fn main_single(state: Option<Lock>, mode: Mode) {
+    #[cfg(target_os = "macos")]
+    assert!(matches!(mode, Mode::Daemon));
+
     redirect_std(&*LOGGING_FILE);
 
-    let (tx, rx) = mpsc::channel::<u16>();
-    let tx2 = tx.clone();
+    let (port_callback, port_receiver) = mpsc::channel::<u16>();
+    let port_callback2 = port_callback.clone();
 
-    let future = server::server_main(tx, daemon);
+    let future = server::server_main(port_callback);
     thread::spawn(|| {
         let _ = &*easytier::FACTORY;
     });
 
-    if let Some(state) = state {
-        thread::spawn(move || {
-            let port = rx.recv().unwrap();
-            if port != 0 {
+    thread::spawn(move || {
+        let port = port_receiver.recv().unwrap();
+        if port != 0 {
+            if let Some(state) = state {
                 state.set_port(port);
             }
-        });
-    }
+
+            #[cfg(not(target_os = "macos"))]
+            match mode {
+                Mode::General => {
+                    let _ = open::that(format!("http://127.0.0.1:{}/", port));
+                }
+                Mode::HMCL { file } => output_port(port, file),
+            }
+        }
+    });
 
     future.await;
-    let _ = tx2.send(0);
+    let _ = port_callback2.send(0);
 
-    easytier::FACTORY.drop_in_place();
+    easytier::FACTORY.remove();
 }
 
-fn main_secondary(port: u16) {
-    cfg_if::cfg_if! {
-        if #[cfg(target_os = "macos")] {
-            ui_macos::open(format!("http://127.0.0.1:{}/", port));
-        } else {
-            let _ = open::that(format!("http://127.0.0.1:{}/", port));
+async fn main_secondary(port: u16, mode: Mode) {
+    #[cfg(not(target_os = "macos"))]
+    {
+        if let Some(lock) = secondary_switch(port).await {
+            logging!("UI", "Running in server mode.");
+            main_single(Some(lock), mode).await;
+            return;
         }
     }
+
+    match mode {
+        Mode::General => {
+            cfg_if::cfg_if! {
+                if #[cfg(target_os = "macos")] {
+                    ui_macos::open(format!("http://127.0.0.1:{}/", port));
+                } else {
+                    let _ = open::that(format!("http://127.0.0.1:{}/", port));
+                }
+            }
+        }
+        #[cfg(target_os = "macos")]
+        Mode::Daemon => assert!(false),
+        Mode::HMCL { file } => output_port(port, file),
+    }
+}
+
+async fn secondary_switch(port: u16) -> Option<Lock> {
+    let client = reqwest::Client::new();
+
+    let Ok(response) = client
+        .get(format!("http://127.0.0.1:{}/meta", port))
+        .send()
+        .await
+    else {
+        return None;
+    };
+    let Ok(body) = response.text().await else {
+        return None;
+    };
+
+    let Ok(value) = serde_json::from_str::<'_, serde_json::Value>(&body) else {
+        return None;
+    };
+    let Some(version) = value.get("version").and_then(|v| v.as_str()) else {
+        return None;
+    };
+
+    if let Some(this) = parse_version(env!("TERRACOTTA_VERSION"))
+        && let Some(running) = parse_version(version)
+        && this > running
+    {
+        let Ok(response) = client
+            .get(format!("http://127.0.0.1:{}/panic?peaceful=true", port))
+            .send()
+            .await
+        else {
+            return None;
+        };
+
+        if response.status().as_u16() == 502 {
+            thread::sleep(Duration::from_millis(1500));
+            let state = Lock::get_state();
+            return match &state {
+                Lock::Single { .. } => {
+                    logging!("UI", "Running in server mode.");
+                    Some(state)
+                }
+                Lock::Secondary { .. } | Lock::Unknown => None,
+            };
+        }
+    }
+    return None;
+}
+
+fn parse_version(version: &str) -> Option<u32> {
+    if version.len() < 5 {
+        return None;
+    }
+
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+
+    let Ok(major) = parts[0].parse::<u8>() else {
+        return None;
+    };
+    let Ok(minor) = parts[1].parse::<u8>() else {
+        return None;
+    };
+    let Ok(patch) = parts[2].parse::<u8>() else {
+        return None;
+    };
+
+    return Some(((major as u32) << 16) | ((minor as u32) << 8) | (patch as u32));
+}
+
+fn output_port(port: u16, file: String) {
+    let mut f = fs::File::create(format!("{}.tmp", file)).unwrap();
+    write!(f, "{}", serde_json::json!({"port": port})).unwrap();
+    fs::rename(format!("{}.tmp", file), file).unwrap();
 }
 
 fn redirect_std(file: &'static std::path::PathBuf) {

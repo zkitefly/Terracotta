@@ -53,7 +53,7 @@ fn create() -> EasytierFactory {
 
 impl Drop for EasytierFactory {
     fn drop(&mut self) {
-        self.drop_in_place();
+        self.remove();
     }
 }
 
@@ -166,7 +166,7 @@ impl EasytierFactory {
         });
     }
 
-    pub fn drop_in_place(&self) {
+    pub fn remove(&self) {
         let dir = self.exe.parent();
         if let Some(dir) = dir {
             let _ = fs::remove_dir_all(dir);
