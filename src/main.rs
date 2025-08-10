@@ -142,36 +142,66 @@ async fn main() {
 
     #[cfg(target_family = "windows")]
     {
-        if unsafe { winapi::um::wincon::AttachConsole(u32::MAX) } == 0
-            && std::io::Error::last_os_error().raw_os_error().unwrap() != 0x6
-        {
-            if unsafe { winapi::um::consoleapi::AllocConsole() } == 0 {
-                panic!("{:?}", std::io::Error::last_os_error());
-            }
-        }
+        if unsafe { winapi::um::wincon::AttachConsole(u32::MAX) } != 0 {
+            unsafe fn get_parent_id() -> u32 {
+                use winapi::{
+                    shared::minwindef::FALSE,
+                    um::{
+                        handleapi::CloseHandle,
+                        tlhelp32::{
+                            CreateToolhelp32Snapshot, PROCESSENTRY32, Process32First,
+                            Process32Next, TH32CS_SNAPPROCESS,
+                        },
+                    },
+                };
 
-        use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+                let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+                if snapshot.is_null() {
+                    panic!("{:?}", std::io::Error::last_os_error());
+                }
+                let mut entry: PROCESSENTRY32 = unsafe { std::mem::zeroed() };
+                entry.dwSize = std::mem::size_of::<PROCESSENTRY32>() as u32;
 
-        if let Ok(f) = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .truncate(false)
-            .share_mode(0x2)
-            .open("CONOUT$")
-        {
-            let handle: winapi::um::winnt::HANDLE = f.as_raw_handle() as _;
-            std::mem::forget(f);
+                if unsafe { Process32First(snapshot, &mut entry) } == FALSE {
+                    unsafe { CloseHandle(snapshot) };
+                    panic!("{:?}", std::io::Error::last_os_error());
+                }
 
-            unsafe {
-                for h in [
-                    winapi::um::winbase::STD_OUTPUT_HANDLE,
-                    winapi::um::winbase::STD_ERROR_HANDLE,
-                ] {
-                    if winapi::um::processenv::SetStdHandle(h, handle) == 0 {
-                        panic!("{:?}", std::io::Error::last_os_error());
+                let current_pid = std::process::id();
+                loop {
+                    if entry.th32ProcessID == current_pid {
+                        return entry.th32ParentProcessID;
+                    }
+                    if unsafe { Process32Next(snapshot, &mut entry) } == FALSE {
+                        break;
                     }
                 }
+                unsafe { CloseHandle(snapshot) };
+                panic!("Cannot find parent process ID for PID {}", current_pid);
             }
+
+            let parent = unsafe {
+                winapi::um::processthreadsapi::OpenProcess(
+                    winapi::um::winnt::SYNCHRONIZE,
+                    winapi::shared::minwindef::FALSE,
+                    get_parent_id(),
+                )
+            };
+            if parent.is_null() {
+                panic!("{:?}", std::io::Error::last_os_error());
+            }
+
+            let parent = std::sync::atomic::AtomicPtr::new(parent);
+            thread::spawn(move || {
+                let parent = parent.load(std::sync::atomic::Ordering::Acquire);
+
+                unsafe {
+                    use winapi::um::{synchapi::WaitForSingleObject, winbase::INFINITE};
+                    WaitForSingleObject(parent, INFINITE);
+
+                    winapi::um::wincon::FreeConsole();
+                }
+            });
         }
     }
 
@@ -280,18 +310,15 @@ cfg_if::cfg_if! {
             };
 
             if let None = error {
-                for timeout in [200, 200, 400, 800, 1600] {
-                    thread::sleep(Duration::from_millis(timeout));
+                thread::sleep(Duration::from_millis(5000));
 
-                    let state = Lock::get_state();
-                    if let Lock::Secondary { port } = &state {
-                        logging!("UI", "Running in secondary mode, port={}.", port);
-
-                        main_secondary(*port, mode).await;
-                        return;
-                    } else {
-                        error = new_error("Cannot detect daemon process after 2000s.");
-                    }
+                let state = Lock::get_state();
+                if let Lock::Secondary { port } = &state {
+                    logging!("UI", "Running in secondary mode, port={}.", port);
+                    main_secondary(*port, mode).await;
+                    return;
+                } else {
+                    error = new_error("Cannot detect daemon process after 2000s.");
                 }
             }
 
@@ -316,8 +343,31 @@ cfg_if::cfg_if! {
             let state = Lock::get_state();
             match &state {
                 Lock::Single { .. } => {
-                    logging!("UI", "Running in server mode.");
-                    main_single(Some(state), mode).await;
+                    cfg_if::cfg_if! {
+                        if #[cfg(target_family = "windows")] {
+                            if mode == Mode::General {
+                                logging!("UI", "Running in server mode.");
+                                main_single(Some(state), mode).await;
+                            } else {
+                                drop(state);
+
+                                use std::os::windows::process::CommandExt;
+                                std::process::Command::new(std::env::current_exe().unwrap()).creation_flags(0x08).spawn().unwrap();
+                            
+                                thread::sleep(Duration::from_millis(5000));
+                                let state = Lock::get_state();
+                                if let Lock::Secondary { port } = &state {
+                                    logging!("UI", "Running in secondary mode, port={}.", port);
+                                    main_secondary(*port, mode).await;
+                                } else {
+                                    panic!("Cannot detect daemon process after 2000s.");
+                                }
+                            }
+                        } else {
+                            logging!("UI", "Running in server mode.");
+                            main_single(Some(state), mode).await;
+                        }
+                    }
                 },
                 Lock::Secondary { port } => {
                     logging!("UI", "Running in secondary mode, port={}.", port);
