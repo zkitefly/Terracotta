@@ -1,8 +1,5 @@
 use objc2::{
-    ClassType, class, define_class,
-    ffi::nil,
-    msg_send,
-    runtime::{AnyObject, Bool},
+    class, define_class, ffi::nil, msg_send, runtime::{AnyObject, Bool}, sel, ClassType
 };
 use objc2_app_kit::{NSBackingStoreType, NSWindowStyleMask};
 use objc2_foundation::{NSAutoreleasePool, NSObject, NSPoint, NSRect, NSSize, NSString};
@@ -54,7 +51,9 @@ unsafe fn delegate_display(webview: *mut AnyObject) {
                 }
             }) {
                 thread::sleep(std::time::Duration::from_millis(200));
-                let _: () = msg_send![webview, setHidden: Bool::NO];
+                
+                let selector = sel!(setHidden:);
+                let _: () = msg_send![webview, performSelectorOnMainThread:selector, withObject:nil, waitUntilDone:Bool::NO];
                 return;
             }
         }
