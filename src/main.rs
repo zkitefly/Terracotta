@@ -220,14 +220,38 @@ async fn main() {
                 println!("Usage: terracotta [OPTIONS]");
                 println!("Options:");
                 println!("  --help: Print this help message");
-                println!("  --hmcl: [INTERNAL USE ONLY] For HMCL only.");
+                println!("  --hmcl: [HMCL] For HMCL only.");
+                #[cfg(target_os = "windows")]
+                println!("  --hmcl2: [INTERNAL] For HMCL only.");
                 #[cfg(target_os = "macos")]
-                println!("  --daemon: [INTERNAL USE ONLY] Run in daemon mode.");
+                println!("  --daemon: [INTERNAL] Run in daemon mode.");
             }
             _ => main_panic(arguments),
         },
         2 => match arguments[0].as_str() {
             "--hmcl" => {
+                cfg_if::cfg_if! {
+                    if #[cfg(target_family = "windows")] {
+                        use std::os::windows::process::CommandExt;
+                        std::process::Command::new(std::env::current_exe().unwrap()).args(["--hmcl2", &arguments[1]]).creation_flags(0x08).spawn().unwrap();
+
+                        let time = SystemTime::now();
+                        while !SystemTime::now().duration_since(time).is_ok_and(|d| d > Duration::from_millis(8000)) {
+                            if fs::File::open(&arguments[1]).is_ok() {
+                                return;
+                            }
+                        }
+                        panic!("Delegate process hasn't started in 8 seconds.");
+                    } else {
+                        main_general(Mode::HMCL {
+                            file: arguments[1].clone(),
+                        })
+                        .await
+                    }
+                }
+            }
+            #[cfg(target_family = "windows")]
+            "--hmcl2" => {
                 main_general(Mode::HMCL {
                     file: arguments[1].clone(),
                 })
@@ -343,31 +367,8 @@ cfg_if::cfg_if! {
             let state = Lock::get_state();
             match &state {
                 Lock::Single { .. } => {
-                    cfg_if::cfg_if! {
-                        if #[cfg(target_family = "windows")] {
-                            if mode == Mode::General {
-                                logging!("UI", "Running in server mode.");
-                                main_single(Some(state), mode).await;
-                            } else {
-                                drop(state);
-
-                                use std::os::windows::process::CommandExt;
-                                std::process::Command::new(std::env::current_exe().unwrap()).creation_flags(0x08).spawn().unwrap();
-                            
-                                thread::sleep(Duration::from_millis(5000));
-                                let state = Lock::get_state();
-                                if let Lock::Secondary { port } = &state {
-                                    logging!("UI", "Running in secondary mode, port={}.", port);
-                                    main_secondary(*port, mode).await;
-                                } else {
-                                    panic!("Cannot detect daemon process after 2000s.");
-                                }
-                            }
-                        } else {
-                            logging!("UI", "Running in server mode.");
-                            main_single(Some(state), mode).await;
-                        }
-                    }
+                    logging!("UI", "Running in server mode.");
+                    main_single(Some(state), mode).await;
                 },
                 Lock::Secondary { port } => {
                     logging!("UI", "Running in secondary mode, port={}.", port);
