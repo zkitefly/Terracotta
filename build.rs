@@ -6,6 +6,7 @@ use std::{
 };
 
 fn main() {
+    println!("cargo::rerun-if-changed=.easytier");
     download_easytier();
 
     sevenz_rust2::compress_to_path(
