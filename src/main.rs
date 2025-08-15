@@ -36,10 +36,11 @@ pub mod code;
 pub mod core;
 pub mod easytier;
 pub mod fakeserver;
-#[cfg(target_family = "windows")]
-pub mod logging;
 pub mod scanning;
 pub mod server;
+
+#[cfg(target_family = "windows")]
+pub mod logging;
 
 #[cfg(target_os = "macos")]
 pub mod ui_macos;
@@ -465,13 +466,11 @@ async fn secondary_switch(port: u16) -> Option<Lock> {
     let Ok(value) = serde_json::from_str::<'_, serde_json::Value>(&body) else {
         return None;
     };
-    let Some(version) = value.get("version").and_then(|v| v.as_str()) else {
+    let Some(compile_timestamp) = value.get("compile_timestamp").and_then(|v| v.as_str()) else {
         return None;
     };
 
-    if let Some(this) = parse_version(env!("TERRACOTTA_VERSION"))
-        && let Some(running) = parse_version(version)
-        && this > running
+    if let Ok(running) = compile_timestamp.parse::<u128>() && timestamp::compile_time!() > running
     {
         let Ok(response) = client
             .get(format!("http://127.0.0.1:{}/panic?peaceful=true", port))
@@ -494,29 +493,6 @@ async fn secondary_switch(port: u16) -> Option<Lock> {
         }
     }
     return None;
-}
-
-fn parse_version(version: &str) -> Option<u32> {
-    if version.len() < 5 {
-        return None;
-    }
-
-    let parts: Vec<&str> = version.split('.').collect();
-    if parts.len() != 3 {
-        return None;
-    }
-
-    let Ok(major) = parts[0].parse::<u8>() else {
-        return None;
-    };
-    let Ok(minor) = parts[1].parse::<u8>() else {
-        return None;
-    };
-    let Ok(patch) = parts[2].parse::<u8>() else {
-        return None;
-    };
-
-    return Some(((major as u32) << 16) | ((minor as u32) << 8) | (patch as u32));
 }
 
 fn output_port(port: u16, file: String) {

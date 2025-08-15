@@ -1,6 +1,5 @@
 use core::panic;
 use std::{
-    env,
     net::{Ipv4Addr, UdpSocket},
 };
 
@@ -292,34 +291,6 @@ impl Room {
     pub fn start_guest(&self, motd: &'static str) -> (Easytier, FakeServer) {
         let mut args = Self::compute_network_arguments(&self);
 
-        lazy_static::lazy_static! {
-            static ref ONLY_V6: bool = {
-                let socket = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, None).unwrap();
-                if cfg!(debug_assertions) && cfg!(target_family = "windows") {
-                    // Socket2 is having a heated debate on whether only_v6 should return an 4 bytes buffer rather than 1.
-                    // See https://github.com/rust-lang/socket2/pull/603
-                    // For now, we catch this panic information where debug assertions are enabled on Windows.
-                    if let Ok(v) = env::var("TERRACOTTA_ONLY_V6") {
-                        match v.as_str() {
-                            "true" | "1" | "yes" => true,
-                            "false" | "0" | "no" => false,
-                            _ => panic!("Invalid value for TERRACOTTA_ONLY_V6: {}", v),
-                        }
-                    } else if let Ok(v) = std::panic::catch_unwind(|| socket.only_v6()) {
-                        v.unwrap()
-                    } else {
-                        panic!(
-                            "Due to https://github.com/rust-lang/socket2/pull/603, \
-                             we cannot determin the only_v6 socket setting in developing environment. \
-                             Please set the environment variable TERRACOTTA_ONLY_V6 to true or false."
-                        );
-                    }
-                } else {
-                    socket.only_v6().unwrap()
-                }
-            };
-        }
-
         let local_port = if let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))
             && let Ok(address) = socket.local_addr()
         {
@@ -338,13 +309,10 @@ impl Room {
             "--port-forward=tcp://[::0]:{}/{}:{}",
             local_port, host_ip, self.port
         ));
-
-        if *ONLY_V6 {
-            args.push(format!(
-                "--port-forward=tcp://0.0.0.0:{}/{}:{}",
-                local_port, host_ip, self.port
-            ));
-        }
+        args.push(format!(
+            "--port-forward=tcp://0.0.0.0:{}/{}:{}",
+            local_port, host_ip, self.port
+        ));
 
         return (
             easytier::FACTORY.create(args),

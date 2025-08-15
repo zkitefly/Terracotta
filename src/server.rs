@@ -200,6 +200,7 @@ fn panic(peaceful: Option<bool>) {
 fn get_meta() -> Json<Value> {
     return Json(json!({
         "version": env!("TERRACOTTA_VERSION"),
+        "compile_timestamp": timestamp::compile_time!().to_string(),
         "easytier_version": env!("TERRACOTTA_ET_VERSION"),
         "target_tuple": format!(
             "{}-{}-{}-{}",
