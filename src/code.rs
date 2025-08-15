@@ -248,10 +248,9 @@ impl Room {
             "tcp://et.01130328.xyz:11010",
             "tcp://et.gbc.moe:11011",
         ];
-        static DEFAULT_ARGUMENTS: [&'static str; 6] = [
+        static DEFAULT_ARGUMENTS: [&'static str; 5] = [
             "--no-tun",
-            "--compression",
-            "zstd",
+            "--compression=zstd",
             "--multi-thread",
             "--latency-first",
             "--enable-kcp-proxy",
@@ -312,6 +311,10 @@ impl Room {
         args.push(format!(
             "--port-forward=tcp://0.0.0.0:{}/{}:{}",
             local_port, host_ip, self.port
+        ));
+        args.push(format!(
+            "--tcp-whitelist={}",
+            self.port,
         ));
 
         return (
