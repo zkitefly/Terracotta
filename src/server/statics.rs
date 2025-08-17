@@ -1,14 +1,6 @@
-use std::path::PathBuf;
-use std::sync::{Arc, RwLock, mpsc};
-use std::thread;
-use std::time::Duration;
+use std::{path::PathBuf, sync::{Arc, RwLock}, thread, time::Duration};
 
 use rocket::http::Status;
-use rocket::serde::json::Json;
-use serde_json::{Value, json};
-
-use crate::code::Room;
-use crate::{LOGGING_FILE, core};
 
 static WEB_STATIC: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/webstatics.7z"));
 
@@ -134,120 +126,6 @@ fn static_files(path: PathBuf) -> Result<MemoryFile, Status> {
     }
 }
 
-#[get("/state")]
-fn get_state() -> Json<Value> {
-    return Json(core::get_state());
-}
-
-#[get("/state/ide")]
-fn set_state_ide() -> Status {
-    core::set_waiting();
-    return Status::Ok;
-}
-
-#[get("/state/scanning")]
-fn set_state_scanning() -> Status {
-    core::set_scanning();
-    return Status::Ok;
-}
-
-#[get("/state/guesting?<room>")]
-fn set_state_guesting(room: Option<String>) -> Status {
-    if let Some(room) = room
-        && let Some(room) = Room::from(&room)
-    {
-        core::set_guesting(room);
-        return Status::Ok;
-    }
-
-    return Status::BadRequest;
-}
-
-cfg_if::cfg_if! {
-    if #[cfg(target_os = "macos")] {
-        #[get("/log")]
-        fn download_log() -> Status {
-            use std::process::Command;
-            return match Command::new("open")
-                .arg((*LOGGING_FILE).parent().unwrap())
-                .spawn() {
-                    Ok(_) => Status::Ok,
-                    Err(e) => {
-                        logging!("Core", "Cannot open logging file: {:?}", e);
-                        Status::InternalServerError
-                    }
-                };
-        }
-    } else {
-        #[get("/log")]
-        fn download_log() -> std::fs::File {
-            return std::fs::File::open((*LOGGING_FILE).clone()).unwrap();
-        }
-    }
-}
-
-#[get("/panic?<peaceful>")]
-fn panic(peaceful: Option<bool>) {
-    if peaceful.unwrap_or(false) {
-        logging!("Core", "Closed by web API. Shutting down.");
-        std::process::exit(0);
-    } else {
-        panic!();
-    }
-}
-
-#[get("/meta")]
-fn get_meta() -> Json<Value> {
-    return Json(json!({
-        "version": env!("TERRACOTTA_VERSION"),
-        "compile_timestamp": timestamp::compile_time!().to_string(),
-        "easytier_version": env!("TERRACOTTA_ET_VERSION"),
-        "target_tuple": format!(
-            "{}-{}-{}-{}",
-            env!("CARGO_CFG_TARGET_ARCH"),
-            env!("CARGO_CFG_TARGET_VENDOR"),
-            env!("CARGO_CFG_TARGET_OS"),
-            env!("CARGO_CFG_TARGET_ENV"),
-         ),
-        "target_arch": env!("CARGO_CFG_TARGET_ARCH"),
-        "target_vendor": env!("CARGO_CFG_TARGET_VENDOR"),
-        "target_os": env!("CARGO_CFG_TARGET_OS"),
-        "target_env": env!("CARGO_CFG_TARGET_ENV"),
-    }));
-}
-
-pub async fn server_main(port_callback: mpsc::Sender<u16>) {
-    core::ExceptionType::register_hook(|_| {
-        // TODO: Send system notifications.
-    });
-
-    let _ = rocket::custom(rocket::Config {
-        log_level: rocket::log::LogLevel::Critical,
-        port: if cfg!(debug_assertions) { 8080 } else { 0 },
-        workers: 2,
-        ..rocket::Config::default()
-    })
-    .mount(
-        "/",
-        routes![
-            get_state,
-            set_state_ide,
-            set_state_scanning,
-            set_state_guesting,
-            download_log,
-            static_files,
-            get_meta,
-            panic,
-        ],
-    )
-    .attach(rocket::fairing::AdHoc::on_liftoff(
-        "Open Browser",
-        move |rocket| {
-            Box::pin(async move {
-                let _ = port_callback.send(rocket.config().port);
-            })
-        },
-    ))
-    .launch()
-    .await;
+pub fn configure(rocket: rocket::Rocket<rocket::Build>) -> rocket::Rocket<rocket::Build> {
+    rocket.mount("/", routes![static_files])
 }
