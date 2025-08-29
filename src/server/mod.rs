@@ -3,11 +3,10 @@ use std::sync::mpsc;
 use rocket::{http::Status, serde::json::Json};
 use serde_json::{Value, json};
 
-use crate::{LOGGING_FILE, core};
+use crate::{LOGGING_FILE, controller};
 
 mod states;
 mod statics;
-mod yggdrasils;
 
 cfg_if::cfg_if! {
     if #[cfg(target_os = "macos")] {
@@ -48,6 +47,9 @@ fn get_meta() -> Json<Value> {
         "version": env!("TERRACOTTA_VERSION"),
         "compile_timestamp": timestamp::compile_time!().to_string(),
         "easytier_version": env!("TERRACOTTA_ET_VERSION"),
+
+        "yggdrasil_port": controller::SCAFFOLDING_PORT.lock().map(|v| *v).ok(),
+
         "target_tuple": format!(
             "{}-{}-{}-{}",
             env!("CARGO_CFG_TARGET_ARCH"),
@@ -68,9 +70,7 @@ fn devtools() -> Status {
 }
 
 pub async fn server_main(port_callback: mpsc::Sender<u16>) {
-    core::ExceptionType::register_hook(|_| {
-        // TODO: Send system notifications.
-    });
+    controller::initialize();
 
     let rocket = rocket::custom(rocket::Config {
         log_level: rocket::log::LogLevel::Critical,
@@ -81,7 +81,6 @@ pub async fn server_main(port_callback: mpsc::Sender<u16>) {
 
     let rocket = states::configure(rocket);
     let rocket = statics::configure(rocket);
-    let rocket = yggdrasils::configure(rocket);
 
     rocket
         .mount("/", routes![download_log, get_meta, panic, devtools])

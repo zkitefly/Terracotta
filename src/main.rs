@@ -10,7 +10,7 @@ macro_rules! logging {
     ($prefix:expr, $($arg:tt)*) => {
         cfg_if::cfg_if! {
             if #[cfg(target_family = "windows")] {
-                crate::logging::logging($prefix, std::format_args!($($arg)*));
+                crate::logging_windows::logging($prefix, std::format_args!($($arg)*));
             } else {
                 std::println!("[{}]: {}", $prefix, std::format_args!($($arg)*));
             }
@@ -21,6 +21,8 @@ macro_rules! logging {
 
 #[macro_use]
 extern crate rocket;
+extern crate core;
+
 use lazy_static::lazy_static;
 
 use std::{
@@ -32,15 +34,15 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-pub mod code;
-pub mod core;
+pub mod controller;
 pub mod easytier;
 pub mod fakeserver;
 pub mod scanning;
 pub mod server;
+pub mod scaffolding;
 
 #[cfg(target_family = "windows")]
-pub mod logging;
+pub mod logging_windows;
 
 #[cfg(target_os = "macos")]
 pub mod ui_macos;
@@ -53,6 +55,7 @@ pub mod lock_windows;
 use lock_windows::State as Lock;
 #[cfg(target_family = "unix")]
 pub mod lock_unix;
+
 #[cfg(target_family = "unix")]
 use lock_unix::State as Lock;
 
@@ -373,9 +376,15 @@ cfg_if::cfg_if! {
                 },
                 Lock::Secondary { port } => {
                     logging!("UI", "Running in secondary mode, port={}.", port);
-                    let port = *port;
-                    drop(state);
-                    main_secondary(port, mode).await;
+                    cfg_if::cfg_if! {
+                        if #[cfg(debug_assertions)] {
+                            main_single(None, mode).await;
+                        } else {
+                            let port = *port;
+                            drop(state);
+                            main_secondary(port, mode).await;
+                        }
+                    }
                 },
                 Lock::Unknown => {
                     logging!("UI", "Running in unknown mode.");
@@ -397,7 +406,7 @@ async fn main_single(state: Option<Lock>, mode: Mode) {
 
     let future = server::server_main(port_callback);
     thread::spawn(|| {
-        let _ = &*easytier::FACTORY;
+        lazy_static::initialize(&easytier::FACTORY);
     });
 
     thread::spawn(move || {
@@ -536,7 +545,7 @@ fn redirect_std(file: &'static std::path::PathBuf) {
 
             std::mem::forget(logging_file);
         } else if #[cfg(target_family = "windows")] {
-            logging::redirect(logging_file);
+            logging_windows::redirect(logging_file);
         } else {
             compile_error!("Cannot redirect console on these platforms.");
         }
@@ -561,7 +570,7 @@ fn cleanup() {
                     && let Ok(duration) = now.duration_since(time)
                     && duration.as_secs()
                         >= if cfg!(debug_assertions) {
-                            2
+                            120
                         } else {
                             24 * 60 * 60
                         }

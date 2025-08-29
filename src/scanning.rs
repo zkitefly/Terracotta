@@ -11,13 +11,13 @@ use socket2::{Domain, SockAddr, Socket, Type};
 
 const SIG_TERMINAL: u8 = 1;
 
-pub struct Scanning {
+pub struct MinecraftScanner {
     signal: Sender<u8>,
     port: Arc<Mutex<Vec<u16>>>,
 }
 
-impl Scanning {
-    pub fn create(filter: fn(&str) -> bool) -> Scanning {
+impl MinecraftScanner {
+    pub fn create(filter: fn(&str) -> bool) -> MinecraftScanner {
         let (tx, rx): (Sender<u8>, Receiver<u8>) = mpsc::channel();
         let port = Arc::new(Mutex::new(vec![]));
 
@@ -33,7 +33,7 @@ impl Scanning {
             }
         });
 
-        return Scanning {
+        return MinecraftScanner {
             signal: tx,
             port: port,
         };
@@ -177,7 +177,7 @@ impl Scanning {
     }
 }
 
-impl Drop for Scanning {
+impl Drop for MinecraftScanner {
     fn drop(&mut self) {
         let _ = self.signal.send(SIG_TERMINAL);
     }

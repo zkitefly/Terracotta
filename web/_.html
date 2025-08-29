@@ -9,8 +9,7 @@
     <style>
         @font-face {
             font-family: "Segoe UI Emoji";
-            src:
-                url("webfonts/seguiemj.ttf") format("truetype"),
+            src: url("webfonts/seguiemj.ttf") format("truetype");
         }
 
         * {
@@ -89,7 +88,7 @@
             width: 100%;
             opacity: 0;
             pointer-events: none;
-            transition: display opacity 0.5s ease;
+            transition: opacity 0.5s ease;
             padding: 20px;
             display: none;
         }
@@ -579,7 +578,7 @@
                 </div>
             </div>
 
-            <div class="view" id="host-loading-view">
+            <div class="view" id="host-scanning-view">
                 <div class="loading-view">
                     <div class="loading-spinner">
                         <div></div>
@@ -593,6 +592,27 @@
                         <div></div>
                     </div>
                     <div class="loading-text">请进入单人存档，按下 ESC 键，选择对局域网开放，点击创建局域网世界。</div>
+                    <button class="action-button back-button" id="host-scanning-back-button">
+                        <i class="fas fa-arrow-left"></i>
+                        返回
+                    </button>
+                </div>
+            </div>
+
+            <div class="view" id="host-loading-view">
+                <div class="loading-view">
+                    <div class="loading-spinner">
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                    </div>
+                    <div class="loading-text">正在启动房间，请稍候</div>
                     <button class="action-button back-button" id="host-loading-back-button">
                         <i class="fas fa-arrow-left"></i>
                         返回
@@ -639,7 +659,7 @@
                     <h2 class="input-title">请输入邀请码</h2>
                     <div class="input-group">
                         <input type="text" class="input-field" id="invite-code-input"
-                            placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX">
+                            placeholder="R/XXXX-XXXX-XXXX-XXXX">
                         <p class="input-hint" id="invite-code-input-hint">没有邀请码？请创建房间。</p>
                     </div>
                     <button class="action-button" id="join-button">
@@ -765,20 +785,20 @@
                             if (["main-view", "guest-input-view"].indexOf(document.getElementsByClassName("active")[0].id) == -1) {
                                 showView("main-view");
                             }
-                        } else if (r.state == "scanning") {
+                        } else if (r.state == "host-scanning") {
+                            showView("host-scanning-view");
+                        } else if (r.state == "host-starting") {
                             showView("host-loading-view");
-                        } else if (r.state == "hosting") {
+                        } else if (r.state == "host-ok") {
                             showView("host-result-view");
                             if (document.getElementById("invite-code-display").innerText != r.room) {
                                 document.getElementById("invite-code-display").innerText = r.room;
                             }
-                        } else if (r.state == "guesting") {
-                            if (r.ok) {
-                                showView("guest-result-view");
-                                document.getElementById("guest-backup-address").innerText = r.url;
-                            } else {
-                                showView("guest-loading-view");
-                            }
+                        } else if (r.state == "guest-connecting" || r.state == "guest-starting") {
+                            showView("guest-loading-view");
+                        } else if (r.state == "guest-ok") {
+                            showView("guest-result-view");
+                            document.getElementById("guest-backup-address").innerText = r.url;
                         } else if (r.state == "exception") {
                             showView("room-error-view");
                             let err;
@@ -792,6 +812,8 @@
                                 err = { "title": "创建房间失败", "desc": "EasyTier 已崩溃，请向开发者反馈该问题"};
                             } else if (r.type == 4) {
                                 err = { "title": "房间已关闭", "desc": "您已退出游戏存档，房间已自动关闭", "icon": "⏸"}
+                            } else if (r.type == 5) {
+                                err = { "title": "协议错误", "desc": "房主发送了错误的响应数据，请向开发者反馈该问题"}
                             }
                             document.getElementById("room-error-icon").innerText = err.icon ?? "❌";
                             document.getElementById("room-error-title").innerText = err.title;
@@ -817,7 +839,10 @@
             }, 500);
         }
 
-        ['host-loading-back-button', "host-back-button", 'guest-loading-back-button', 'guest-back-button', 'guest-result-back-button', "room-error-back-button"].forEach(id => {
+        [
+            'host-scanning-back-button', "host-loading-back-button", "host-back-button",
+            'guest-loading-back-button', 'guest-back-button', 'guest-result-back-button', "room-error-back-button"
+        ].forEach(id => {
             document.getElementById(id).addEventListener('click', () => {
                 showView('main-view');
                 fetch("/state/ide");
@@ -825,7 +850,7 @@
         });
 
         document.getElementById("host-tile").addEventListener('click', () => {
-            showView('host-loading-view');
+            showView('host-scanning-view');
             fetch("/state/scanning");
         });
 

@@ -1,3 +1,6 @@
+use sevenz_rust2::encoder_options::{EncoderOptions, LZMA2Options};
+use sevenz_rust2::{ArchiveEntry, EncoderConfiguration, EncoderMethod, SourceReader};
+use std::io::Cursor;
 use std::{
     env, fs,
     io::{self, Read},
@@ -13,15 +16,12 @@ fn main() {
         "web",
         Path::new(&get_var("OUT_DIR").unwrap()).join("webstatics.7z"),
     )
-    .unwrap();
+        .unwrap();
     println!("cargo::rerun-if-changed=web");
 
     let desc = get_var("TARGET").unwrap().replace('-', "_").to_uppercase();
 
-    let version = match get_var("TERRACOTTA_VERSION") {
-        Ok(v) => v,
-        Err(_) => "snapshot".to_string()
-    };
+    let version = get_var("TERRACOTTA_VERSION").unwrap_or_else(|_| "snapshot".to_string());
     println!("cargo::rustc-env=TERRACOTTA_VERSION={}", version);
 
     let target_family = get_var("CARGO_CFG_TARGET_FAMILY").unwrap().to_string();
@@ -61,11 +61,14 @@ fn download_easytier() {
         url: &'static str,
         files: Vec<&'static str>,
         entry: &'static str,
+        cli: &'static str,
         desc: &'static str,
     }
 
     let version = {
-        let mut input = fs::read_to_string(Path::new(&get_var("CARGO_MANIFEST_DIR").unwrap()).join("Cargo.toml"))
+        let mut input = fs::read_to_string(
+            Path::new(&get_var("CARGO_MANIFEST_DIR").unwrap()).join("Cargo.toml"),
+        )
             .unwrap()
             .parse::<toml::Table>()
             .unwrap();
@@ -88,20 +91,22 @@ fn download_easytier() {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/{V}/easytier-windows-x86_64-{V}.zip",
                 files: vec![
                     "easytier-windows-x86_64/easytier-core.exe",
+                    "easytier-windows-x86_64/easytier-cli.exe",
                     "easytier-windows-x86_64/Packet.dll",
-                    "easytier-windows-x86_64/wintun.dll",
                 ],
                 entry: "easytier-core.exe",
+                cli: "easytier-cli.exe",
                 desc: "windows-x86_64",
             },
             "aarch64" => EasytierFiles {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/{V}/easytier-windows-arm64-{V}.zip",
                 files: vec![
                     "easytier-windows-arm64/easytier-core.exe",
+                    "easytier-windows-arm64/easytier-cli.exe",
                     "easytier-windows-arm64/Packet.dll",
-                    "easytier-windows-arm64/wintun.dll",
                 ],
                 entry: "easytier-core.exe",
+                cli: "easytier-cli.exe",
                 desc: "windows-arm64",
             },
             _ => panic!("Unsupported target arch: {}", target_arch),
@@ -109,14 +114,22 @@ fn download_easytier() {
         "linux" => match target_arch.as_str() {
             "x86_64" => EasytierFiles {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/{V}/easytier-linux-x86_64-{V}.zip",
-                files: vec!["easytier-linux-x86_64/easytier-core"],
+                files: vec![
+                    "easytier-linux-x86_64/easytier-core",
+                    "easytier-linux-x86_64/easytier-cli",
+                ],
                 entry: "easytier-core",
+                cli: "easytier-cli",
                 desc: "linux-x86_64",
             },
             "aarch64" => EasytierFiles {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/{V}/easytier-linux-aarch64-{V}.zip",
-                files: vec!["easytier-linux-aarch64/easytier-core"],
+                files: vec![
+                    "easytier-linux-aarch64/easytier-core",
+                    "easytier-linux-aarch64/easytier-cli",
+                ],
                 entry: "easytier-core",
+                cli: "easytier-cli",
                 desc: "linux-arm64",
             },
             _ => panic!("Unsupported target arch: {}", target_arch),
@@ -124,14 +137,22 @@ fn download_easytier() {
         "macos" => match target_arch.as_str() {
             "x86_64" => EasytierFiles {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/{V}/easytier-macos-x86_64-{V}.zip",
-                files: vec!["easytier-macos-x86_64/easytier-core"],
+                files: vec![
+                    "easytier-macos-x86_64/easytier-core",
+                    "easytier-macos-x86_64/easytier-cli",
+                ],
                 entry: "easytier-core",
+                cli: "easytier-cli",
                 desc: "macos-x86_64",
             },
             "aarch64" => EasytierFiles {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/{V}/easytier-macos-aarch64-{V}.zip",
-                files: vec!["easytier-macos-aarch64/easytier-core"],
+                files: vec![
+                    "easytier-macos-aarch64/easytier-core",
+                    "easytier-macos-aarch64/easytier-cli",
+                ],
                 entry: "easytier-core",
+                cli: "easytier-cli",
                 desc: "macos-arm64",
             },
             _ => panic!("Unsupported target arch: {}", target_arch),
@@ -139,12 +160,16 @@ fn download_easytier() {
         "freebsd" => match target_arch.as_str() {
             "x86_64" => EasytierFiles {
                 url: "https://github.com/EasyTier/EasyTier/releases/download/{V}/easytier-freebsd-13.2-x86_64-{V}.zip",
-                files: vec!["easytier-freebsd-13.2-x86_64/easytier-core"],
+                files: vec![
+                    "easytier-freebsd-13.2-x86_64/easytier-core",
+                    "easytier-freebsd-13.2-x86_64/easytier-cli",
+                ],
                 entry: "easytier-core",
+                cli: "easytier-cli",
                 desc: "freebsd-x86_64",
             },
             _ => panic!("Unsupported target arch: {}", target_arch),
-        }
+        },
         _ => panic!("Unsupported target os: {}", target_os),
     };
 
@@ -153,14 +178,19 @@ fn download_easytier() {
         .join(&version)
         .join(conf.desc);
     let entry_conf = base.clone().join("entry-conf.v1.txt");
+    let cli_conf = base.clone().join("cli-conf.v1.txt");
     let entry_archive = base.clone().join("easytier.7z");
     println!(
         "cargo::rustc-env=TERRACOTTA_ET_ENTRY_CONF={}",
-        entry_conf.as_path().to_str().unwrap().to_string()
+        entry_conf.as_path().to_str().unwrap()
+    );
+    println!(
+        "cargo::rustc-env=TERRACOTTA_ET_CLI_CONF={}",
+        cli_conf.as_path().to_str().unwrap()
     );
     println!(
         "cargo::rustc-env=TERRACOTTA_ET_ARCHIVE={}",
-        entry_archive.as_path().to_str().unwrap().to_string()
+        entry_archive.as_path().to_str().unwrap()
     );
     println!("cargo::rustc-env=TERRACOTTA_ET_VERSION={}", version);
 
@@ -176,57 +206,57 @@ fn download_easytier() {
     let source =
         Path::new(&env::temp_dir()).join(format!("terracotta-build-rs-{}.zip", process::id()));
 
-    let result = reqwest::blocking::get(conf.url.replace("{V}", &version))
+    reqwest::blocking::get(conf.url.replace("{V}", &version))
         .unwrap()
         .copy_to(&mut io::BufWriter::new(
             fs::File::create(source.clone()).unwrap(),
-        ));
-    if result.is_err() {
-        let _ = fs::remove_file(source.clone());
-        result.unwrap();
-    }
+        ))
+        .inspect_err(|_| {
+            let _ = fs::remove_file(source.clone());
+        })
+        .unwrap();
 
     let mut archive = zip::ZipArchive::new(fs::File::open(source.clone()).unwrap()).unwrap();
     let target = base.clone().join("easytier.7z.tmp");
     let mut writer =
         sevenz_rust2::ArchiveWriter::new(fs::File::create(target.clone()).unwrap()).unwrap();
-
+    writer.set_content_methods(vec![EncoderConfiguration {
+        method: EncoderMethod::LZMA2,
+        options: Some(EncoderOptions::LZMA2(LZMA2Options::from_level(9))),
+    }, EncoderConfiguration {
+        method: match target_arch.as_str() {
+            "x86_64" => EncoderMethod::BCJ_X86_FILTER,
+            "aarch64" => EncoderMethod::BCJ_ARM64_FILTER,
+            _ => panic!("Cannot determine BCJ Filter Type."),
+        },
+        options: None,
+    }]);
+    let mut archive_entries: Vec<ArchiveEntry> = vec![];
+    let mut archive_readers: Vec<SourceReader<Cursor<Vec<u8>>>> = vec![];
     for file in conf.files.iter() {
-        let mut buf: std::vec::Vec<u8> = vec![];
-
         let mut entry = archive.by_name(file).unwrap();
+
+        let mut buf: Vec<u8> = vec![];
         entry.read_to_end(&mut buf).unwrap();
 
-        writer
-            .push_archive_entry(
-                sevenz_rust2::ArchiveEntry::from_path(
-                    "",
-                    Path::new(&entry.enclosed_name().unwrap())
-                        .file_name()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .to_string(),
-                ),
-                Some(io::Cursor::new(buf)),
-            )
-            .unwrap();
+        archive_entries.push(ArchiveEntry::new_file(Path::new(&entry.enclosed_name().unwrap()).file_name().unwrap().to_str().unwrap()));
+        archive_readers.push(SourceReader::new(Cursor::new(buf)));
     }
-
+    writer.push_archive_entries(archive_entries, archive_readers).unwrap();
     writer.finish().unwrap();
+
     let r = fs::rename(target.clone(), entry_archive.clone());
-    if !fs::metadata(entry_archive.clone()).is_ok() {
+    if fs::metadata(entry_archive.clone()).is_err() {
         r.unwrap();
     }
     fs::write(entry_conf, conf.entry).unwrap();
+    fs::write(cli_conf, conf.cli).unwrap();
 }
 
-pub fn get_var<K: core::convert::AsRef<std::ffi::os_str::OsStr>>(
-    key: K,
-) -> core::result::Result<String, std::env::VarError> {
+pub fn get_var<K: AsRef<std::ffi::os_str::OsStr>>(key: K) -> Result<String, env::VarError> {
     println!(
         "cargo::rerun-if-env-changed={}",
         key.as_ref().to_string_lossy()
     );
-    return env::var(key.as_ref());
+    env::var(key.as_ref())
 }

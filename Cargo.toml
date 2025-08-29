@@ -5,7 +5,7 @@ edition = "2024"
 build = "build.rs"
 
 [package.metadata.easytier]
-version = "v2.4.2"
+version = "v2.4.3"
 
 [workspace.package]
 version = "0.0.0-snapshot"
@@ -25,25 +25,18 @@ num-bigint = "0.4.6"
 open = { version = "5.3.2", default-features = false }
 rand_core = { version = "0.9.3", features = ["os_rng"] }
 rocket = { version = "0.5.1", default-features = false, features = ["json"] }
+serde = "1.0.219"
 serde_json = "1.0.141"
-sevenz-rust2 = { version = "0.16.0", default-features = false, features = [
+sevenz-rust2 = { version = "0.18.0", default-features = false, features = [
     "util",
 ] }
 socket2 = "0.6.0"
-winapi = { version = "0.3.9", default-features = false, features = [
-    "winbase",
-    "wincon",
-    "handleapi",
-    "processenv",
-    "consoleapi",
-    "sysinfoapi",
-    "tlhelp32",
-    "synchapi"
-] }
+winapi = { version = "0.3.9", default-features = false, features = ["winbase", "wincon", "handleapi", "processenv", "consoleapi", "sysinfoapi", "tlhelp32", "synchapi", "processthreadsapi"] }
 reqwest = { version = "0.12.22", default-features = false, features = [
     "blocking"
 ] }
 timestamp = { path = "timestamp" }
+hex = "0.4.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.1"
@@ -53,7 +46,7 @@ objc2-web-kit = "0.3.1"
 
 [build-dependencies]
 winresource = "0.1"
-sevenz-rust2 = { version = "0.16.0", default-features = false, features = [
+sevenz-rust2 = { version = "0.18.0", default-features = false, features = [
     "compress",
     "util",
 ] }
@@ -62,6 +55,9 @@ reqwest = { version = "0.12.22", default-features = false, features = [
 ] }
 zip = "4.3.0"
 toml = "0.9.4"
+
+[profile.dev]
+panic = "abort"
 
 [profile.release]
 strip = true

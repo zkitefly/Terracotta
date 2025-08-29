@@ -2,36 +2,36 @@ use rocket::http::Status;
 use rocket::serde::json::Json;
 use serde_json::Value;
 
-use crate::code::Room;
-use crate::core;
+use crate::controller;
+use crate::controller::Room;
 
 #[get("/")]
 fn get_state() -> Json<Value> {
-    return Json(core::get_state());
+    Json(controller::get_state())
 }
 
 #[get("/ide")]
 fn set_state_ide() -> Status {
-    core::set_waiting();
-    return Status::Ok;
+    controller::set_waiting();
+    Status::Ok
 }
 
-#[get("/scanning")]
-fn set_state_scanning() -> Status {
-    core::set_scanning();
-    return Status::Ok;
+#[get("/scanning?<player>")]
+fn set_state_scanning(player: Option<String>) -> Status {
+    controller::set_scanning(player);
+    Status::Ok
 }
 
-#[get("/guesting?<room>")]
-fn set_state_guesting(room: Option<String>) -> Status {
+#[get("/guesting?<room>&<player>")]
+fn set_state_guesting(room: Option<String>, player: Option<String>) -> Status {
     if let Some(room) = room
         && let Some(room) = Room::from(&room)
+        && controller::set_guesting(room, player)
     {
-        core::set_guesting(room);
         return Status::Ok;
     }
 
-    return Status::BadRequest;
+    Status::BadRequest
 }
 
 pub fn configure(rocket: rocket::Rocket<rocket::Build>) -> rocket::Rocket<rocket::Build> {

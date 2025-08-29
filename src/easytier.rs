@@ -1,17 +1,18 @@
+use crate::EASYTIER_DIR;
+use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::{
     env, fs,
-    io::{BufRead, BufReader, Cursor, Error, ErrorKind},
+    io::{BufRead, BufReader, Cursor, Error},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{Arc, Mutex, mpsc},
+    sync::{mpsc, Arc, Mutex},
     thread,
     time::Duration,
 };
 
-use crate::EASYTIER_DIR;
-
-static EASYTIER_ARCHIVE: (&'static str, &'static [u8]) = (
+static EASYTIER_ARCHIVE: (&str, &str, &[u8]) = (
     include_str!(env!("TERRACOTTA_ET_ENTRY_CONF")),
+    include_str!(env!("TERRACOTTA_ET_CLI_CONF")),
     include_bytes!(env!("TERRACOTTA_ET_ARCHIVE")),
 );
 
@@ -21,10 +22,13 @@ lazy_static::lazy_static! {
 
 pub struct EasytierFactory {
     exe: PathBuf,
+    cli: PathBuf,
 }
 
 pub struct Easytier {
     process: Arc<Mutex<Child>>,
+    rpc: u16,
+    cli: PathBuf,
 }
 
 fn create() -> EasytierFactory {
@@ -36,19 +40,25 @@ fn create() -> EasytierFactory {
         &*EASYTIER_DIR.to_string_lossy()
     );
 
-    sevenz_rust2::decompress(Cursor::new(EASYTIER_ARCHIVE.1.to_vec()), &*EASYTIER_DIR)
-        .map_err(|e| Error::new(ErrorKind::Other, e.to_string()))
+    sevenz_rust2::decompress(Cursor::new(EASYTIER_ARCHIVE.2.to_vec()), &*EASYTIER_DIR)
+        .map_err(|e| Error::other(e.to_string()))
         .unwrap();
 
-    let exe: PathBuf = Path::join(&*EASYTIER_DIR, EASYTIER_ARCHIVE.0);
+    let exe: PathBuf = Path::join(&EASYTIER_DIR, EASYTIER_ARCHIVE.0);
+    let cli: PathBuf = Path::join(&EASYTIER_DIR, EASYTIER_ARCHIVE.1);
     #[cfg(target_family = "unix")]
     {
         use std::os::unix::fs::PermissionsExt;
+
         let mut permissions = fs::metadata(exe.clone()).unwrap().permissions();
         permissions.set_mode(permissions.mode() | 0o100);
         fs::set_permissions(exe.clone(), permissions).unwrap();
+
+        let mut permissions = fs::metadata(cli.clone()).unwrap().permissions();
+        permissions.set_mode(permissions.mode() | 0o100);
+        fs::set_permissions(cli.clone(), permissions).unwrap();
     }
-    return EasytierFactory { exe: exe };
+    EasytierFactory { exe, cli }
 }
 
 impl Drop for EasytierFactory {
@@ -59,12 +69,19 @@ impl Drop for EasytierFactory {
 
 impl EasytierFactory {
     pub fn create(&self, args: Vec<String>) -> Easytier {
-        logging!("Easytier", "Starting easytier: {:?}", args);
-
         fs::metadata(&self.exe).unwrap();
 
+        let rpc = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+            .and_then(|socket| socket.local_addr())
+            .map(|address| address.port())
+            .unwrap_or(35785);
+
+        logging!("Easytier", "Starting easytier: {:?}, rpc={}", args, rpc);
+
         let mut process = Command::new(self.exe.as_path());
-        process.args(args)
+        process
+            .args(args)
+            .args(["-r", &rpc.to_string()])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
@@ -148,22 +165,24 @@ impl EasytierFactory {
             logging!("Easytier Core", "{}", output);
         });
 
-        return Easytier { process: process };
+        Easytier {
+            process,
+            rpc,
+            cli: self.cli.clone(),
+        }
     }
 
-    fn pump_std<R: std::io::Read + std::marker::Send + 'static>(
+    fn pump_std<R: std::io::Read + Send + 'static>(
         sender: &mpsc::Sender<String>,
         source: R,
     ) -> thread::JoinHandle<()> {
         let sender = sender.clone();
-        return thread::spawn(move || {
+        thread::spawn(move || {
             let reader = BufReader::new(source);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    sender.send(line).unwrap();
-                }
+            for line in reader.lines().flatten() {
+                sender.send(line).unwrap();
             }
-        });
+        })
     }
 
     pub fn remove(&self) {
@@ -181,14 +200,38 @@ impl Easytier {
 
     pub fn is_alive(&mut self) -> bool {
         if let Ok(value) = self.process.lock().unwrap().try_wait() {
-            if let Some(_) = value {
-                return false;
-            } else {
-                return true;
-            }
+            !value.is_some()
         } else {
-            return false;
+            false
         }
+    }
+
+    pub fn add_port_forward(
+        &mut self,
+        local_ip: IpAddr,
+        local_port: u16,
+        remote_ip: IpAddr,
+        remote_port: u16,
+    ) -> bool {
+        fn to_string(ip: IpAddr, port: u16) -> String {
+            match ip {
+                IpAddr::V4(ip) => format!("{}:{}", ip, port),
+                IpAddr::V6(ip) => format!("[{}]:{}", ip, port),
+            }
+        }
+
+        Command::new(self.cli.as_path())
+            .args([
+                "-p",
+                &format!("127.0.0.1:{}", self.rpc),
+                "port-forward",
+                "add",
+                "tcp",
+                &to_string(local_ip, local_port),
+                &to_string(remote_ip, remote_port),
+            ])
+            .status()
+            .is_ok_and(|status| status.success())
     }
 }
 
