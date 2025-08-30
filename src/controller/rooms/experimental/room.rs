@@ -92,8 +92,8 @@ pub fn parse(code: &str) -> Option<Room> {
 fn from_value(value: u128) -> (String, String, String) {
     let mut code = String::with_capacity("R/XXXX-XXXX-XXXX-XXXX".len());
     code.push_str("R/");
-    let mut network_name = String::with_capacity("terracotta-scaffolding-mc-XXXX-XXXX".len());
-    network_name.push_str("terracotta-scaffolding-mc-");
+    let mut network_name = String::with_capacity("scaffolding-mc-XXXX-XXXX".len());
+    network_name.push_str("scaffolding-mc-");
     let mut network_secret = String::with_capacity("XXXX-XXXX".len());
 
     let mut value = value;
@@ -121,7 +121,7 @@ fn from_value(value: u128) -> (String, String, String) {
 
     assert_eq!(value, 0);
     assert_eq!(code.len(), "R/XXXX-XXXX-XXXX-XXXX".len());
-    assert_eq!(network_name.len(), "terracotta-scaffolding-mc-XXXX-XXXX".len());
+    assert_eq!(network_name.len(), "scaffolding-mc-XXXX-XXXX".len());
     assert_eq!(network_secret.len(), "XXXX-XXXX".len());
 
     (code, network_name, network_secret)
