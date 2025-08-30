@@ -38,8 +38,11 @@ jobs:
           fi
       - name: Build
         run: |
-          rustup target add --toolchain nightly x86_64-pc-windows-gnu
-          cargo +nightly build --release
+          rustup target add --toolchain nightly x86_64-pc-windows-msvc
+          rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
+          cargo +nightly build --release \
+            -Z build-std=core,std,alloc,proc_macro,panic_abort \
+            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
       - name: Upload Artifact
         run: |
           source="terracotta-${TERRACOTTA_VERSION}-windows-x86_64.exe"
@@ -47,7 +50,7 @@ jobs:
           tar acvf "$source.tar" "$source"
           cat "$source.tar" | gh-actions-artifact-client.js upload "$source"
   windows-arm64:
-    runs-on: windows-latest
+    runs-on: windows-11-arm
     name: Build for Windows arm64
     steps:
       - name: Checkout
@@ -63,10 +66,11 @@ jobs:
           fi
       - name: Build
         run: |
-          cargo install cargo-xwin
-          rustup component add llvm-tools
           rustup target add --toolchain nightly aarch64-pc-windows-msvc
-          cargo +nightly build --release
+          rustup component add rust-src --toolchain nightly-aarch64-pc-windows-msvc
+          cargo +nightly build --release \
+            -Z build-std=core,std,alloc,proc_macro,panic_abort \
+            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
       - name: Upload Artifact
         run: |
           source="terracotta-${TERRACOTTA_VERSION}-windows-arm64.exe"
@@ -91,7 +95,10 @@ jobs:
       - name: Build
         run: |
           rustup target add --toolchain nightly x86_64-unknown-linux-gnu
-          cargo +nightly build --release
+          rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
+          cargo +nightly build --release \
+            -Z build-std=core,std,alloc,proc_macro,panic_abort \
+            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
       - name: Upload Artifact
         run: |
           source="terracotta-${TERRACOTTA_VERSION}-linux-x86_64"
@@ -130,7 +137,10 @@ jobs:
       - name: Build
         run: |
           rustup target add --toolchain nightly aarch64-unknown-linux-gnu
-          cargo +nightly build --release
+          rustup component add rust-src --toolchain nightly-aarch64-unknown-linux-gnu
+          cargo +nightly build --release \
+            -Z build-std=core,std,alloc,proc_macro,panic_abort \
+            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
       - name: Upload Artifact
         run: |
           source="terracotta-${TERRACOTTA_VERSION}-linux-arm64"
@@ -169,10 +179,13 @@ jobs:
       - name: Build
         run: |
           rustup target add --toolchain nightly x86_64-apple-darwin
-          cargo +nightly build --release
+          rustup component add rust-src --toolchain nightly-x86_64-apple-darwin
+          cargo +nightly build --release \
+            -Z build-std=core,std,alloc,proc_macro,panic_abort \
+            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
       - name: Upload Artifact
         run: |
-          source="terracotta-${TERRACOTTA_VERSION}-macos-x86_64.tar"
+          source="terracotta-${TERRACOTTA_VERSION}-macos-x86_64"
           
           cp "target/release/terracotta" "$source"
           chmod 755 "$source"
@@ -217,10 +230,13 @@ jobs:
       - name: Build
         run: |
           rustup target add --toolchain nightly aarch64-apple-darwin
-          cargo +nightly build --release
+          rustup component add rust-src --toolchain nightly-aarch64-apple-darwin
+          cargo +nightly build --release \
+            -Z build-std=core,std,alloc,proc_macro,panic_abort \
+            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
       - name: Upload Artifact
         run: |
-          source="terracotta-${TERRACOTTA_VERSION}-macos-arm64.tar"
+          source="terracotta-${TERRACOTTA_VERSION}-macos-arm64"
           
           cp "target/release/terracotta" "$source"
           chmod 755 "$source"
