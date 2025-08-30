@@ -3,7 +3,7 @@ use crate::controller::{ExceptionType, Room, RoomKind, SCAFFOLDING_PORT};
 use crate::easytier;
 use crate::fakeserver::FakeServer;
 use crate::scaffolding::client::ClientSession;
-use crate::scaffolding::profile::{Profile, ProfileKind};
+use crate::scaffolding::profile::{Profile, ProfileKind, ProfileSnapshot};
 use crate::scaffolding::PacketResponse;
 use rand_core::{OsRng, TryRngCore};
 use serde_json::{json, Value};
@@ -11,7 +11,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener};
 use std::time::{Duration, SystemTime};
 use std::thread;
 
-use crate::controller::experimental::MACHINE_ID;
+use crate::controller::experimental::{MACHINE_ID, VENDOR};
 use crate::controller::rooms::legacy;
 
 static CHARS: &[u8] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ".as_bytes();
@@ -23,8 +23,8 @@ fn lookup_char(char: char) -> Option<u8> {
         _ => char,
     };
 
-    for j in 0..34 {
-        if CHARS[j] as char == char {
+    for (j, c) in CHARS.iter().enumerate() {
+        if *c as char == char {
             return Some(j as u8);
         }
     }
@@ -150,7 +150,12 @@ pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppSta
             room, port, easytier,
             profiles: vec![(
                 SystemTime::now(),
-                Profile::new(MACHINE_ID.to_string(), player.unwrap_or("Terracotta Anonymous Host".to_string()), ProfileKind::HOST)
+                ProfileSnapshot {
+                    machine_id: MACHINE_ID.to_string(),
+                    name: player.unwrap_or("Terracotta Anonymous Host".to_string()),
+                    vendor: VENDOR.to_string(),
+                    kind: ProfileKind::HOST
+                }.into_profile()
             )]
         })
     };
@@ -308,7 +313,13 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
         local_port
     };
 
-    let local = Profile::new(MACHINE_ID.to_string(), player.unwrap_or("Terracotta Anonymous Guest".to_string()), ProfileKind::LOCAL);
+    let local = ProfileSnapshot {
+        machine_id: MACHINE_ID.to_string(),
+        name: player.unwrap_or("Terracotta Anonymous Guest".to_string()),
+        vendor: VENDOR.to_string(),
+        kind: ProfileKind::LOCAL
+    }.into_profile();
+
     let capture = {
         let Some(state) = capture.try_capture() else {
             return;
@@ -336,8 +347,9 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
             {
                 let Some(_) = session.send_sync(("c", "player_ping"), |body| {
                     serde_json::to_writer(body, &json!({
-                        "machine_id": local.get_machine_id().to_string(),
-                        "name": local.get_name().to_string(),
+                        "machine_id": local.get_machine_id(),
+                        "name": local.get_name(),
+                        "vendor": local.get_vendor()
                     })).unwrap();
                 }) else {
                     fail(capture);
@@ -358,6 +370,8 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                     let mut server_players: Vec<Profile> = vec![];
                     for (machine_id, item) in serde_json::from_slice::<Value>(data.as_slice()).ok()?.as_object()? {
                         let name = item.as_object()?.get("name")?.as_str()?;
+                        let vendor = item.as_object()?.get("vendor")?.as_str()?;
+
                         let kind = if machine_id == *MACHINE_ID {
                             if local {
                                 logging!("RoomExperiment", "API c:player_profiles_list invocation failed: Multiple local player, machine_id may have conflicted.");
@@ -377,7 +391,12 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                             }
                         };
 
-                        server_players.push(Profile::new(machine_id.to_string(), name.to_string(), kind));
+                        server_players.push(ProfileSnapshot {
+                            machine_id: machine_id.to_string(),
+                            name: name.to_string(),
+                            vendor: vendor.to_string(),
+                            kind
+                        }.into_profile())
                     }
                     if !host {
                         logging!("RoomExperiment", "API c:player_profiles_list invocation failed: No host detected.");

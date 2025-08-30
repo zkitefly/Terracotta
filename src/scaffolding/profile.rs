@@ -9,26 +9,34 @@ pub enum ProfileKind {
 pub struct Profile {
     machine_id: String,
     name: String,
+    vendor: String,
     kind: ProfileKind,
 }
 
 pub struct ProfileSnapshot {
     pub machine_id: String,
     pub name: String,
+    pub vendor: String,
     pub kind: ProfileKind,
 }
 
-impl Profile {
-    pub fn new(machine_id: String, name: String, kind: ProfileKind) -> Profile {
-        Profile {machine_id, name, kind}
+impl ProfileSnapshot {
+    pub fn into_profile(self) -> Profile {
+        Profile { machine_id: self.machine_id, name: self.name, vendor: self.vendor, kind: self.kind}
     }
+}
 
+impl Profile {
     pub fn get_machine_id(&self) -> &str {
         &self.machine_id
     }
 
     pub fn get_name(&self) -> &str {
         &self.name
+    }
+
+    pub fn get_vendor(&self) -> &str {
+        &self.vendor
     }
 
     pub fn get_kind(&self) -> &ProfileKind {
@@ -40,6 +48,6 @@ impl Profile {
     }
 
     pub fn as_snapshot(&self) -> ProfileSnapshot {
-        ProfileSnapshot { machine_id: self.machine_id.clone(), name: self.name.clone(), kind: self.kind }
+        ProfileSnapshot { machine_id: self.machine_id.clone(), name: self.name.clone(), vendor: self.vendor.clone(), kind: self.kind }
     }
 }

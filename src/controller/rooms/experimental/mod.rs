@@ -11,4 +11,9 @@ lazy_static::lazy_static! {
         OsRng.try_fill_bytes(&mut bytes).unwrap();
         Box::leak(Box::new(hex::encode(bytes)))
     };
+
+    static ref VENDOR: &'static str = Box::leak(Box::new(
+        format!("Terracotta {}, EasyTier {}", env!("TERRACOTTA_VERSION"), env!("TERRACOTTA_ET_VERSION"))
+    ));
 }
+

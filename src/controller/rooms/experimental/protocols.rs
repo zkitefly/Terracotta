@@ -1,5 +1,5 @@
 use crate::controller::states::AppState;
-use crate::scaffolding::profile::{Profile, ProfileKind};
+use crate::scaffolding::profile::{ProfileKind, ProfileSnapshot};
 use crate::scaffolding::server::Handlers;
 use crate::scaffolding::PacketResponse;
 use serde_json::{json, Map, Value};
@@ -51,6 +51,7 @@ pub static HANDLERS: Handlers = &[
 
         let name = parse(|| value.as_object()?.get("name")?.as_str())?;
         let machine_id = parse(|| value.as_object()?.get("machine_id")?.as_str())?;
+        let vendor = parse(|| value.as_object()?.get("vendor")?.as_str())?;
 
         let mut container = AppState::acquire();
         let AppState::HostOk { profiles, .. } = container.as_mut_ref() else {
@@ -67,7 +68,12 @@ pub static HANDLERS: Handlers = &[
             }
             Some(_) => return Err(io::Error::other("IllegalStateException: Cannot modify host, machine_id may conflict.")),
             None => {
-                profiles.push((SystemTime::now(), Profile::new(machine_id.to_string(), name.to_string(), ProfileKind::GUEST)));
+                profiles.push((SystemTime::now(), ProfileSnapshot {
+                    machine_id: machine_id.to_string(),
+                    name: name.to_string(),
+                    vendor: vendor.to_string(),
+                    kind: ProfileKind::GUEST
+                }.into_profile()));
                 container.increase();
             }
         }
@@ -84,6 +90,7 @@ pub static HANDLERS: Handlers = &[
         for (_, profile) in profiles {
             value.insert(profile.get_machine_id().to_string(), json!({
                 "name": profile.get_name(),
+                "vendor": profile.get_vendor(),
                 "kind": match profile.get_kind() {
                     ProfileKind::HOST => "HOST",
                     ProfileKind::GUEST => "GUEST",
