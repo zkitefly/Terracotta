@@ -125,14 +125,14 @@ pub fn check_mc_conn(port: u16) -> bool {
 
     let socket = Socket::new(Domain::IPV4, Type::STREAM, None).unwrap();
     socket
-        .set_read_timeout(Some(Duration::from_secs(4)))
+        .set_read_timeout(Some(Duration::from_secs(64)))
         .unwrap();
     socket
-        .set_write_timeout(Some(Duration::from_secs(4)))
+        .set_write_timeout(Some(Duration::from_secs(64)))
         .unwrap();
     if let Ok(_) = socket.connect_timeout(
         &SockAddr::from(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)),
-        Duration::from_secs(5),
+        Duration::from_secs(64),
     ) && let Ok(_) = socket.send(&[0xFE]) {
         let mut buf: [MaybeUninit<u8>; 1] = unsafe { MaybeUninit::uninit().assume_init() };
 

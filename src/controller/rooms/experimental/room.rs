@@ -8,6 +8,7 @@ use crate::scaffolding::PacketResponse;
 use rand_core::{OsRng, TryRngCore};
 use serde_json::{json, Value};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener};
+use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 use std::thread;
 
@@ -32,13 +33,12 @@ fn lookup_char(char: char) -> Option<u8> {
     None
 }
 
-pub fn create_room(port: u16) -> Room {
+pub fn create_room() -> Room {
     let value = {
         let mut bytes = [0u8; 16];
         OsRng.try_fill_bytes(&mut bytes).unwrap();
         u128::from_be_bytes(bytes)
     } % 34u128.pow(16);
-    let value = (value & !0xFFFF00) | ((port as u128) << 8);
     let value = value - value % 7;
 
     let (code, network_name, network_secret) = from_value(value);
@@ -47,18 +47,18 @@ pub fn create_room(port: u16) -> Room {
         code,
         network_name,
         network_secret,
-        kind: RoomKind::Experimental { scaffolding: *SCAFFOLDING_PORT.lock().unwrap() },
+        kind: RoomKind::Experimental,
     }
 }
 
 pub fn parse(code: &str) -> Option<Room> {
     let code: Vec<char> = code.to_ascii_uppercase().chars().collect();
-    if code.len() < "R/XXXX-XXXX-XXXX-XXXX".len() {
+    if code.len() < "U/XXXX-XXXX-XXXX-XXXX".len() {
         return None;
     }
 
     let value: u128 = 'value: {
-        for code in code.windows("R/XXXX-XXXX-XXXX-XXXX".len()) {
+        for code in code.windows("U/XXXX-XXXX-XXXX-XXXX".len()) {
             let code = &code[2..];
 
             let mut value: u128 = 0;
@@ -79,19 +79,18 @@ pub fn parse(code: &str) -> Option<Room> {
     };
 
     let (code, network_name, network_secret) = from_value(value);
-    let port = ((value & 0xFFFF00) >> 8) as u16;
 
     Some(Room {
         code,
         network_name,
         network_secret,
-        kind: RoomKind::Experimental { scaffolding: port },
+        kind: RoomKind::Experimental,
     })
 }
 
 fn from_value(value: u128) -> (String, String, String) {
-    let mut code = String::with_capacity("R/XXXX-XXXX-XXXX-XXXX".len());
-    code.push_str("R/");
+    let mut code = String::with_capacity("U/XXXX-XXXX-XXXX-XXXX".len());
+    code.push_str("U/");
     let mut network_name = String::with_capacity("scaffolding-mc-XXXX-XXXX".len());
     network_name.push_str("scaffolding-mc-");
     let mut network_secret = String::with_capacity("XXXX-XXXX".len());
@@ -120,7 +119,7 @@ fn from_value(value: u128) -> (String, String, String) {
     }
 
     assert_eq!(value, 0);
-    assert_eq!(code.len(), "R/XXXX-XXXX-XXXX-XXXX".len());
+    assert_eq!(code.len(), "U/XXXX-XXXX-XXXX-XXXX".len());
     assert_eq!(network_name.len(), "scaffolding-mc-XXXX-XXXX".len());
     assert_eq!(network_secret.len(), "XXXX-XXXX".len());
 
@@ -128,18 +127,19 @@ fn from_value(value: u128) -> (String, String, String) {
 }
 
 pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppStateCapture) {
+    let scaffolding = {
+        let lock = SCAFFOLDING_PORT.lock().unwrap();
+        *lock
+    };
+
     let mut args = compute_arguments(&room);
+    args.push("--hostname".to_string());
+    args.push(format!("scaffolding-mc-server-{}", scaffolding));
     args.push("--ipv4".to_string());
     args.push("10.144.144.1".to_string());
-    args.push(format!(
-        "--tcp-whitelist={}",
-        match room.kind {
-            RoomKind::Experimental { scaffolding, .. } => scaffolding,
-            _ => unreachable!(),
-        },
-    ));
+    args.push(format!("--tcp-whitelist={}", scaffolding));
     args.push(format!("--tcp-whitelist={}", port));
-    args.push("--udp-whitelist=0".to_string());
+    args.push(format!("--tcp-whitelist={}", port));
 
     let easytier = easytier::FACTORY.create(args);
     let capture = {
@@ -147,7 +147,9 @@ pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppSta
             return;
         };
         state.set(AppState::HostOk {
-            room, port, easytier,
+            room,
+            port,
+            easytier,
             profiles: vec![(
                 SystemTime::now(),
                 ProfileSnapshot {
@@ -156,7 +158,7 @@ pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppSta
                     vendor: VENDOR.to_string(),
                     kind: ProfileKind::HOST
                 }.into_profile()
-            )]
+            )],
         })
     };
 
@@ -171,7 +173,7 @@ pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppSta
                     let Some(state) = capture.try_capture() else {
                         return;
                     };
-                    state.set(AppState::Exception { kind: ExceptionType::PingServerRst});
+                    state.set(AppState::Exception { kind: ExceptionType::PingServerRst });
                     return;
                 }
             }
@@ -206,23 +208,11 @@ pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppSta
 }
 
 pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture) {
-    let port = match room.kind {
-        RoomKind::Experimental { scaffolding, .. } => scaffolding,
-        _ => unreachable!(),
-    };
-    let local_port = if let Ok(socket) = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0))
-        && let Ok(address) = socket.local_addr()
-    {
-        address.port()
-    } else {
-        35782
-    };
-
     let mut args = compute_arguments(&room);
-    args.push(format!("--port-forward=tcp://0.0.0.0:{}/10.144.144.1:{}", local_port, port));
     args.push("-d".to_string());
-    let easytier = easytier::FACTORY.create(args.clone());
-
+    args.push("--tcp-whitelist=0".to_string());
+    args.push("--udp-whitelist=0".to_string());
+    let easytier = easytier::FACTORY.create(args);
     let capture = {
         let Some(state) = capture.try_capture() else {
             return;
@@ -231,7 +221,56 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
         state.set(AppState::GuestStarting { room, easytier })
     };
 
-    thread::sleep(Duration::from_secs(5));
+    let scaffolding = 'local_port: {
+        for _ in 0..5 {
+            let Some(mut state) = capture.try_capture() else {
+                return;
+            };
+            let AppState::GuestStarting { easytier, .. } = state.as_mut_ref() else {
+                unreachable!();
+            };
+            if !easytier.is_alive() {
+                state.set(AppState::Exception { kind: ExceptionType::GuestEasytierCrash });
+                return;
+            }
+
+            let Some(players) = easytier.get_players() else {
+                continue;
+            };
+            for (hostname, ip) in players {
+                if hostname.starts_with("scaffolding-mc-server-") && let Ok(port) = u16::from_str(&hostname["scaffolding-mc-server-".len()..]) {
+                    let local_port = if let Ok(socket) = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0))
+                        && let Ok(address) = socket.local_addr()
+                    {
+                        address.port()
+                    } else {
+                        35782
+                    };
+
+                    if !easytier.add_port_forward(
+                        IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+                        local_port,
+                        IpAddr::V4(ip),
+                        port,
+                    ) {
+                        state.set(AppState::Exception { kind: ExceptionType::GuestEasytierCrash });
+                        return;
+                    };
+
+                    break 'local_port local_port;
+                }
+            }
+
+            thread::sleep(Duration::from_secs(3));
+        }
+
+        logging!("RoomExperiment", "Cannot find scaffolding server.");
+        let Some(state) = capture.try_capture() else {
+            return;
+        };
+        state.set(AppState::Exception { kind: ExceptionType::PingHostFail });
+        return;
+    };
 
     fn fail(capture: AppStateCapture) {
         let Some(state) = capture.try_capture() else {
@@ -243,8 +282,18 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
     let mut session = 'session: {
         for timeout in [4, 4, 8, 4, 8, 16] {
             thread::sleep(Duration::from_secs(timeout));
-            if let Ok(session) = ClientSession::open(IpAddr::V4(Ipv4Addr::LOCALHOST), local_port) {
-                break 'session session;
+            if let Ok(mut session) = ClientSession::open(IpAddr::V4(Ipv4Addr::LOCALHOST), scaffolding)
+                && let Some(response) = session.send_sync(("c", "ping"), |body| {
+                    body.resize(body.len() + 16, 0x4C);
+                })
+            {
+                let PacketResponse::Ok { data } = response else {
+                    unreachable!();
+                };
+
+                if data.len() == 16 && data.iter().all(|b| *b == 0x4C) {
+                    break 'session session;
+                }
             }
 
             let Some(mut state) = capture.try_capture() else {
@@ -317,7 +366,7 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
         machine_id: MACHINE_ID.to_string(),
         name: player.unwrap_or("Terracotta Anonymous Guest".to_string()),
         vendor: VENDOR.to_string(),
-        kind: ProfileKind::LOCAL
+        kind: ProfileKind::LOCAL,
     }.into_profile();
 
     let capture = {
@@ -395,7 +444,7 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                             machine_id: machine_id.to_string(),
                             name: name.to_string(),
                             vendor: vendor.to_string(),
-                            kind
+                            kind,
                         }.into_profile())
                     }
                     if !host {
@@ -437,14 +486,14 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                                     profile.set_name(server_profiles[index].get_name().to_string());
                                     changed = true;
                                 }
-                            },
+                            }
                             _ => {
                                 logging!("RoomExperiment", "API c:player_profiles_list invocation failed: Host Profile is consumed or invalid, machine_id may have conflict.");
                                 state.set(AppState::Exception { kind: ExceptionType::ScaffoldingInvalidResponse });
                                 return;
                             }
                         },
-                        ProfileKind::LOCAL => {},
+                        ProfileKind::LOCAL => {}
                         ProfileKind::GUEST => match server_profiles.binary_search_by_key(&profile.get_machine_id(), |p| p.get_machine_id()) {
                             Ok(index) if used[index] && *server_profiles[index].get_kind() == ProfileKind::GUEST => {
                                 profiles.remove(i);
@@ -497,12 +546,14 @@ fn compute_arguments(room: &Room) -> Vec<String> {
         "tcp://et.01130328.xyz:11010",
         "tcp://et.gbc.moe:11011",
     ];
-    static DEFAULT_ARGUMENTS: [&str; 5] = [
+    static DEFAULT_ARGUMENTS: [&str; 7] = [
         "--no-tun",
         "--compression=zstd",
         "--multi-thread",
         "--latency-first",
         "--enable-kcp-proxy",
+        "--port-forward",
+        "tcp://0.0.0.0:0/127.0.0.1:1"
     ];
 
     let mut args = vec![

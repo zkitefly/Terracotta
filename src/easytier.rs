@@ -9,6 +9,7 @@ use std::{
     thread,
     time::Duration,
 };
+use std::str::FromStr;
 
 static EASYTIER_ARCHIVE: (&str, &str, &[u8]) = (
     include_str!(env!("TERRACOTTA_ET_ENTRY_CONF")),
@@ -206,6 +207,24 @@ impl Easytier {
         }
     }
 
+    pub fn get_players(&mut self) -> Option<Vec<(String, Ipv4Addr)>> {
+        let object: serde_json::Value = serde_json::from_str(std::str::from_utf8(
+            &Command::new(self.cli.as_path())
+                .args(["-p", &format!("127.0.0.1:{}", self.rpc), "-o", "json", "peer"])
+                .output().ok()?.stdout
+        ).ok()?).ok()?;
+
+        let mut players: Vec<(String, Ipv4Addr)> = vec![];
+        for item in object.as_array()? {
+            let host = item.as_object()?.get("hostname")?.as_str()?.to_string();
+            if let Ok(ip) = Ipv4Addr::from_str(item.as_object()?.get("ipv4")?.as_str()?) {
+                players.push((host, ip));
+            }
+
+        }
+        Some(players)
+    }
+
     pub fn add_port_forward(
         &mut self,
         local_ip: IpAddr,
@@ -220,18 +239,18 @@ impl Easytier {
             }
         }
 
-        Command::new(self.cli.as_path())
-            .args([
-                "-p",
-                &format!("127.0.0.1:{}", self.rpc),
-                "port-forward",
-                "add",
-                "tcp",
-                &to_string(local_ip, local_port),
-                &to_string(remote_ip, remote_port),
-            ])
-            .status()
-            .is_ok_and(|status| status.success())
+        for kind in ["tcp", "udp"] {
+            if !Command::new(self.cli.as_path())
+                .args([
+                    "-p", &format!("127.0.0.1:{}", self.rpc), "port-forward", "add",
+                    kind, &to_string(local_ip, local_port), &to_string(remote_ip, remote_port),
+                ])
+                .status()
+                .is_ok_and(|status| status.success()) {
+                return false;
+            }
+        }
+        true
     }
 }
 

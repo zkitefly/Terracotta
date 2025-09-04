@@ -106,17 +106,20 @@ impl ClientSession {
             match receiver.try_recv() {
                 Ok(response) => break response,
                 Err(mpsc::TryRecvError::Disconnected) => unreachable!(),
-                Err(mpsc::TryRecvError::Empty) if !*self.alive.read().unwrap() => return None,
+                Err(mpsc::TryRecvError::Empty) if !*self.alive.read().unwrap() => {
+                    logging!("ScaffoldingClient", "API {}:{} invocation failed: Session has been closed.", kind.0, kind.1);
+                    return None;
+                },
                 Err(mpsc::TryRecvError::Empty) => continue,
             }
         } {
             Some(PacketResponse::Ok { data }) => Some(PacketResponse::Ok { data }),
             Some(PacketResponse::Fail { status, data }) => {
-                logging!("ClientSession", "API {}:{} invocation failed with status {}: {}", kind.0, kind.1, status, String::from_utf8_lossy(&data));
+                logging!("ScaffoldingClient", "API {}:{} invocation failed with status {}: {}", kind.0, kind.1, status, String::from_utf8_lossy(&data));
                 None
             },
             None => {
-                logging!("ClientSession", "API {}:{} invocation failed: Session has been closed.", kind.0, kind.1);
+                logging!("ScaffoldingClient", "API {}:{} invocation failed: Session has been closed.", kind.0, kind.1);
                 None
             }
         }

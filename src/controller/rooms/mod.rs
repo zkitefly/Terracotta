@@ -15,14 +15,14 @@ pub struct Room {
 
 #[derive(Debug, Clone)]
 pub(crate) enum RoomKind {
-    Experimental { scaffolding: u16 },
+    Experimental,
     TerracottaLegacy { mc_port: u16 },
     PCL2CE { mc_port: u16 },
 }
 
 impl Room {
-    pub fn create(port: u16) -> Room {
-        experimental::create_room(port)
+    pub fn create() -> Room {
+        experimental::create_room()
     }
 
     pub fn from(code: &str) -> Option<Room> {
@@ -41,7 +41,7 @@ impl Room {
 
     pub fn start_guest(self, capture: AppStateCapture, player: Option<String>) {
         match self.kind {
-            RoomKind::Experimental { .. } => experimental::start_guest(self, player, capture),
+            RoomKind::Experimental => experimental::start_guest(self, player, capture),
             RoomKind::TerracottaLegacy { .. } | RoomKind::PCL2CE { .. } => legacy::start_guest(self, capture),
         };
     }

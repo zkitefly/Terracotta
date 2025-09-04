@@ -1,14 +1,14 @@
-use crate::MOTD;
-use crate::controller::{ExceptionType, Room, SCAFFOLDING_PORT};
 use crate::controller::states::AppState;
+use crate::controller::{ExceptionType, Room};
+use crate::scaffolding::profile::Profile;
 use crate::scanning::MinecraftScanner;
-use serde_json::{Value, json};
-use std::thread;
-use std::time::{Duration, SystemTime};
+use crate::MOTD;
 use rocket::serde::Serialize;
 use serde::ser::SerializeSeq;
 use serde::Serializer;
-use crate::scaffolding::profile::Profile;
+use serde_json::{json, Value};
+use std::thread;
+use std::time::{Duration, SystemTime};
 
 pub fn get_state() -> Value {
     let state = AppState::acquire();
@@ -100,10 +100,7 @@ pub fn set_scanning(player: Option<String>) {
             };
 
             if let Some(port) = scanner.get_ports().first() {
-                let room = Room::create({
-                    let port = SCAFFOLDING_PORT.lock().unwrap();
-                    *port
-                });
+                let room = Room::create();
                 break (room.clone(), *port, state.set(AppState::HostStarting { room, port: *port }));
             }
 
