@@ -33,6 +33,7 @@ use std::{
     thread,
     time::{Duration, SystemTime},
 };
+use chrono::{FixedOffset, TimeZone, Utc};
 
 pub mod controller;
 pub mod easytier;
@@ -377,7 +378,7 @@ cfg_if::cfg_if! {
                 Lock::Secondary { port } => {
                     logging!("UI", "Running in secondary mode, port={}.", port);
                     cfg_if::cfg_if! {
-                        if #[cfg(debug_assertions)] {
+                        if #[cfg(all(false, debug_assertions))] {
                             main_single(None, mode).await;
                         } else {
                             let port = *port;
@@ -403,6 +404,19 @@ async fn main_single(state: Option<Lock>, mode: Mode) {
 
     let (port_callback, port_receiver) = mpsc::channel::<u16>();
     let port_callback2 = port_callback.clone();
+
+    logging!(
+        "UI", "Welcome using Terracotta v{}, compiled at {}. Easytier: {}. Target: {}-{}-{}-{}.",
+        env!("TERRACOTTA_VERSION"),
+        Utc.timestamp_millis_opt(timestamp::compile_time!() as i64).unwrap()
+            .with_timezone(&FixedOffset::east_opt(8 * 3600).unwrap())
+            .format("%Y-%m-%d %H:%M:%S"),
+        env!("TERRACOTTA_ET_VERSION"),
+        env!("CARGO_CFG_TARGET_ARCH"),
+        env!("CARGO_CFG_TARGET_VENDOR"),
+        env!("CARGO_CFG_TARGET_OS"),
+        env!("CARGO_CFG_TARGET_ENV"),
+    );
 
     let future = server::server_main(port_callback);
     thread::spawn(|| {
