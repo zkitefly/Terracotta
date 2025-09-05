@@ -417,8 +417,9 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                     let mut local = false;
 
                     let mut server_players: Vec<Profile> = vec![];
-                    for (machine_id, item) in serde_json::from_slice::<Value>(data.as_slice()).ok()?.as_object()? {
+                    for item in serde_json::from_slice::<Value>(data.as_slice()).ok()?.as_array()? {
                         let name = item.as_object()?.get("name")?.as_str()?;
+                        let machine_id = item.as_object()?.get("machine_id")?.as_str()?;
                         let vendor = item.as_object()?.get("vendor")?.as_str()?;
 
                         let kind = if machine_id == *MACHINE_ID {
@@ -453,6 +454,12 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                     }
 
                     server_players.sort_by_cached_key(|profile| profile.get_machine_id().to_string());
+                    for profile in server_players.windows(2) {
+                        if profile[0].get_machine_id() == profile[1].get_machine_id() {
+                            logging!("RoomExperiment", "API c:player_profiles_list invocation failed: machine_id conflict.");
+                            return None;
+                        }
+                    }
                     Some(server_players)
                 }) else {
                     fail(capture);

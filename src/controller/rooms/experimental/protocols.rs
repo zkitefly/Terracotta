@@ -2,9 +2,11 @@ use crate::controller::states::AppState;
 use crate::scaffolding::profile::{ProfileKind, ProfileSnapshot};
 use crate::scaffolding::server::Handlers;
 use crate::scaffolding::PacketResponse;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Serializer, Value};
 use std::io;
 use std::time::SystemTime;
+use serde::ser::SerializeSeq;
+use serde::Serializer as _;
 
 fn parse<F, R>(f: F) -> io::Result<R>
 where
@@ -81,25 +83,28 @@ pub static HANDLERS: Handlers = &[
         PacketResponse::ok(response)
     }),
     ("c", "player_profiles_list", |_: &[u8], mut response: Vec<u8>| -> io::Result<PacketResponse> {
-        let mut value = Map::new();
+        let mut value = Serializer::new(&mut response);
 
         let container = AppState::acquire();
         let AppState::HostOk { profiles, .. } = container.as_ref() else {
             return Err(io::Error::other("IllegalStateException: Expecting HostOk."));
         };
+
+        let mut sequence = value.serialize_seq(Some(profiles.len()))?;
         for (_, profile) in profiles {
-            value.insert(profile.get_machine_id().to_string(), json!({
+            sequence.serialize_element(&json!({
                 "name": profile.get_name(),
+                "machine_id": profile.get_machine_id(),
                 "vendor": profile.get_vendor(),
                 "kind": match profile.get_kind() {
                     ProfileKind::HOST => "HOST",
                     ProfileKind::GUEST => "GUEST",
                     ProfileKind::LOCAL => unreachable!(),
                 }
-            }));
+            }))?;
         }
+        sequence.end()?;
 
-        serde_json::to_writer(&mut response, &Value::from(value))?;
         PacketResponse::ok(response)
     }),
 ];
