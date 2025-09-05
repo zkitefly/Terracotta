@@ -65,7 +65,7 @@ pub static HANDLERS: Handlers = &[
 
                 if profiles[i].1.get_name() != name {
                     profiles[i].1.set_name(name.to_string());
-                    container.increase();
+                    container.increase_shared();
                 }
             }
             Some(_) => return Err(io::Error::other("IllegalStateException: Cannot modify host, machine_id may conflict.")),
@@ -76,7 +76,7 @@ pub static HANDLERS: Handlers = &[
                     vendor: vendor.to_string(),
                     kind: ProfileKind::GUEST
                 }.into_profile()));
-                container.increase();
+                container.increase_shared();
             }
         }
 

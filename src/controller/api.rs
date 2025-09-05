@@ -12,7 +12,7 @@ use std::time::{Duration, SystemTime};
 
 pub fn get_state() -> Value {
     let state = AppState::acquire();
-    let index = state.index();
+    let index = unsafe { state.index() };
 
     match state.as_ref() {
         AppState::Waiting => {

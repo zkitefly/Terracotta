@@ -87,16 +87,22 @@ pub enum ExceptionType {
 }
 
 pub struct AppStateContainer {
-    state: MutexGuard<'static, (u32, AppState)>,
+    state: MutexGuard<'static, Holder>,
 }
 
 pub struct AppStateCapture {
     index: u32
 }
 
+struct Holder {
+    index: u32,
+    sharing: u32,
+    value: AppState,
+}
+
 impl AppState {
     pub fn acquire() -> AppStateContainer {
-        static GLOBAL_STATE: Mutex<(u32, AppState)> = Mutex::new((0, AppState::Waiting));
+        static GLOBAL_STATE: Mutex<Holder> = Mutex::new(Holder { index: 0, sharing: 0, value: AppState::Waiting});
 
         AppStateContainer { state: GLOBAL_STATE.lock().unwrap() }
     }
@@ -104,58 +110,60 @@ impl AppState {
 
 impl AppStateContainer {
     pub fn as_ref(&self) -> &AppState {
-        &self.state.1
+        &self.state.value
     }
 
     pub fn as_mut_ref(&mut self) -> &mut AppState {
-        &mut self.state.1
+        &mut self.state.value
     }
 
-    pub fn index(&self) -> u32 {
-        self.state.0
+    pub unsafe fn index(&self) -> u32 {
+        self.state.index
     }
 
     pub fn set(mut self, state: AppState) -> AppStateCapture {
-        logging!("State", "Switch to {:?}", &state);
-
-        self.state.0 += 1;
-        self.state.1 = state;
-        AppStateCapture { index: self.state.0 }
+        self.state.value = state;
+        self.increase()
     }
 
     pub fn replace<F>(mut self, f: F) -> AppStateCapture
     where
         F: FnOnce(AppState) -> AppState
     {
-        self.state.0 += 1;
+        let legacy = mem::replace(&mut self.state.value, AppState::Waiting);
+        let _ = mem::replace(&mut self.state.value, f(legacy));
 
-        let legacy = mem::replace(&mut self.state.1, AppState::Waiting);
-        let new = f(legacy);
-        logging!("State", "Switch to {:?}", &new);
-        let _ = mem::replace(&mut self.state.1, new);
-
-        AppStateCapture { index: self.state.0 }
+        self.increase()
     }
 
     pub fn increase(mut self) -> AppStateCapture {
-        self.state.0 += 1;
-        logging!("State", "Switch to {:?}", &self.state.1);
-        AppStateCapture { index: self.state.0 }
+        self.state.index += 1;
+        self.state.sharing = 0;
+
+        logging!("State", "Switch to {:?}", &self.state.value);
+        AppStateCapture { index: self.state.index }
+    }
+
+    pub fn increase_shared(mut self) {
+        self.state.index += 1;
+        self.state.sharing += 1;
+
+        logging!("State", "Switch (Shared) to {:?}", &self.state.value);
     }
 }
 
 impl AppStateCapture {
     pub fn try_capture(&self) -> Option<AppStateContainer> {
-        let state = AppState::acquire();
-        if state.index() == self.index {
-            Some(state)
-        }  else {
+        let container = AppState::acquire();
+        let state = &container.state;
+        if state.index - state.sharing <= self.index {
+            Some(container)
+        } else {
             None
         }
     }
 
     pub fn can_capture(&self) -> bool {
-        let state = AppState::acquire();
-        state.index() == self.index
+        self.try_capture().is_some()
     }
 }

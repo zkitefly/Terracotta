@@ -201,7 +201,7 @@ pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppSta
                 }
             }
             if changed {
-                state.increase();
+                state.increase_shared();
             }
         }
     });
@@ -388,8 +388,6 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
     };
 
     thread::spawn(move || {
-        let mut capture = capture;
-
         loop {
             thread::sleep(Duration::from_secs(5));
 
@@ -533,7 +531,7 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                     }
                 }
                 if changed {
-                    capture = state.increase();
+                    state.increase_shared();
                 }
             }
         }
