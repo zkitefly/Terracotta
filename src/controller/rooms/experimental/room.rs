@@ -362,6 +362,12 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
         local_port
     };
 
+    for _ in 0..8 {
+        if legacy::check_mc_conn(local_port) {
+            break;
+        }
+    }
+
     let local = ProfileSnapshot {
         machine_id: MACHINE_ID.to_string(),
         name: player.unwrap_or("Terracotta Anonymous Guest".to_string()),
