@@ -5,13 +5,13 @@ use crate::fakeserver::FakeServer;
 use crate::scaffolding::client::ClientSession;
 use crate::scaffolding::profile::{Profile, ProfileKind, ProfileSnapshot};
 use crate::scaffolding::PacketResponse;
-use rand_core::{OsRng, TryRngCore};
+use rand_core::{OsRng, RngCore, SeedableRng, TryRngCore};
 use serde_json::{json, Value};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener};
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
-use std::thread;
-
+use std::{io, thread};
+use rand_chacha::ChaCha12Rng;
 use crate::controller::experimental::{MACHINE_ID, VENDOR};
 use crate::controller::rooms::legacy;
 
@@ -47,7 +47,7 @@ pub fn create_room() -> Room {
         code,
         network_name,
         network_secret,
-        kind: RoomKind::Experimental,
+        kind: RoomKind::Experimental { seed: value },
     }
 }
 
@@ -84,7 +84,7 @@ pub fn parse(code: &str) -> Option<Room> {
         code,
         network_name,
         network_secret,
-        kind: RoomKind::Experimental,
+        kind: RoomKind::Experimental { seed: value },
     })
 }
 
@@ -284,8 +284,8 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
             thread::sleep(Duration::from_secs(timeout));
             if let Ok(mut session) = ClientSession::open(IpAddr::V4(Ipv4Addr::LOCALHOST), scaffolding)
                 && let Some(response) = session.send_sync(("c", "ping"), |body| {
-                    body.resize(body.len() + 16, 0x4C);
-                })
+                body.resize(body.len() + 16, 0x4C);
+            })
             {
                 let PacketResponse::Ok { data } = response else {
                     unreachable!();
@@ -545,17 +545,9 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
 }
 
 fn compute_arguments(room: &Room) -> Vec<String> {
-    static REPLAY_SERVERS: [&str; 10] = [
+    static FALLBACK_SERVERS: [&str; 2] = [
         "tcp://public.easytier.top:11010",
-        "tcp://ah.nkbpal.cn:11010",
-        "tcp://turn.hb.629957.xyz:11010",
-        "tcp://turn.js.629957.xyz:11012",
-        "tcp://sh.993555.xyz:11010",
-        "tcp://turn.bj.629957.xyz:11010",
-        "tcp://et.sh.suhoan.cn:11010",
-        "tcp://et-hk.clickor.click:11010",
-        "tcp://et.01130328.xyz:11010",
-        "tcp://et.gbc.moe:11011",
+        "tcp://public2.easytier.cn:54321",
     ];
     static DEFAULT_ARGUMENTS: [&str; 7] = [
         "--no-tun",
@@ -574,12 +566,74 @@ fn compute_arguments(room: &Room) -> Vec<String> {
         room.network_secret.clone(),
     ];
 
-    for replay in REPLAY_SERVERS.iter() {
-        args.push("-p".to_string());
-        args.push(replay.to_string());
+    match fetch_public_nodes(room) {
+        Ok(nodes) => {
+            for replay in nodes {
+                args.push("-p".to_string());
+                args.push(replay);
+            }
+        }
+        Err(e) => {
+            logging!("RoomExperiment", "Cannot fetch EasyTier public nodes: {:?}.", e);
+            for replay in FALLBACK_SERVERS {
+                args.push("-p".to_string());
+                args.push(replay.to_string());
+            }
+        }
     }
-    for arg in DEFAULT_ARGUMENTS.iter() {
+
+    for arg in DEFAULT_ARGUMENTS {
         args.push(arg.to_string());
     }
     args
+}
+
+fn fetch_public_nodes(room: &Room) -> io::Result<Vec<String>> {
+    static LIMIT: usize = 5;
+
+    let mut servers: Vec<String> = serde_json::from_reader::<_, Value>(
+        reqwest::blocking::Client::builder()
+            .timeout(Some(Duration::from_secs(10)))
+            .build()
+            .map_err(io::Error::other)?
+            .get("https://uptime.easytier.cn/api/nodes?page=1&per_page=50&is_active=true")
+            .send()
+            .map_err(io::Error::other)?
+    ).map_err(io::Error::other)?
+        .as_object()
+        .and_then(|object| {
+            if !object.get("success")?.as_bool()? {
+                return None;
+            }
+
+            Some(object.get("data")?.as_object()?
+                .get("items")?.as_array()?
+                .iter().filter_map(|node| node.as_object())
+                .flat_map(|node| {
+                    if node.get("allow_relay")?.as_bool()? && node.get("is_active")?.as_bool()? {
+                        Some(node.get("address")?.as_str()?.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect())
+        })
+        .ok_or(io::Error::from(io::ErrorKind::InvalidData))?;
+
+    if servers.len() > LIMIT {
+        let mut rng = ChaCha12Rng::from_seed(match room.kind {
+            RoomKind::Experimental { seed } => {
+                let mut value = [0u8; 32];
+                value[0..16].copy_from_slice(&seed.to_be_bytes());
+                value
+            }
+            _ => unreachable!(),
+        });
+
+        for i in (1..servers.len()).rev() {
+            servers.swap(i, rng.next_u32() as usize % (i + 1));
+        }
+        servers.truncate(5);
+    }
+    Ok(servers)
 }
