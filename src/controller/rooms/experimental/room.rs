@@ -544,11 +544,12 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
     });
 }
 
+static FALLBACK_SERVERS: [&str; 2] = [
+    "tcp://public.easytier.top:11010",
+    "tcp://public2.easytier.cn:54321",
+];
+
 fn compute_arguments(room: &Room) -> Vec<String> {
-    static FALLBACK_SERVERS: [&str; 2] = [
-        "tcp://public.easytier.top:11010",
-        "tcp://public2.easytier.cn:54321",
-    ];
     static DEFAULT_ARGUMENTS: [&str; 7] = [
         "--no-tun",
         "--compression=zstd",
@@ -610,8 +611,9 @@ fn fetch_public_nodes(room: &Room) -> io::Result<Vec<String>> {
                 .get("items")?.as_array()?
                 .iter().filter_map(|node| node.as_object())
                 .flat_map(|node| {
-                    if node.get("allow_relay")?.as_bool()? && node.get("is_active")?.as_bool()? {
-                        Some(node.get("address")?.as_str()?.to_string())
+                    let address = node.get("address")?.as_str()?;
+                    if node.get("allow_relay")?.as_bool()? && node.get("is_active")?.as_bool()? && !FALLBACK_SERVERS.contains(&address) {
+                        Some(address.to_string())
                     } else {
                         None
                     }
@@ -634,6 +636,9 @@ fn fetch_public_nodes(room: &Room) -> io::Result<Vec<String>> {
             servers.swap(i, rng.next_u32() as usize % (i + 1));
         }
         servers.truncate(5);
+    }
+    for fallback in FALLBACK_SERVERS {
+        servers.push(fallback.to_string());
     }
     Ok(servers)
 }
