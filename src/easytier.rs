@@ -209,7 +209,7 @@ impl Easytier {
 
     pub fn get_players(&mut self) -> Option<Vec<(String, Ipv4Addr)>> {
         let object: serde_json::Value = serde_json::from_str(std::str::from_utf8(
-            &Command::new(self.cli.as_path())
+            &self.start_cli()
                 .args(["-p", &format!("127.0.0.1:{}", self.rpc), "-o", "json", "peer"])
                 .output().ok()?.stdout
         ).ok()?).ok()?;
@@ -240,7 +240,7 @@ impl Easytier {
         }
 
         for kind in ["tcp", "udp"] {
-            if !Command::new(self.cli.as_path())
+            if !self.start_cli()
                 .args([
                     "-p", &format!("127.0.0.1:{}", self.rpc), "port-forward", "add",
                     kind, &to_string(local_ip, local_port), &to_string(remote_ip, remote_port),
@@ -251,6 +251,16 @@ impl Easytier {
             }
         }
         true
+    }
+
+    fn start_cli(&mut self) -> Command {
+        let mut command = Command::new(self.cli.as_path());
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000);
+        }
+        command
     }
 }
 
