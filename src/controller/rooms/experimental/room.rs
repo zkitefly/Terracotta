@@ -223,6 +223,8 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
 
     let scaffolding = 'local_port: {
         for _ in 0..5 {
+            thread::sleep(Duration::from_secs(3));
+            
             let Some(mut state) = capture.try_capture() else {
                 return;
             };
@@ -260,8 +262,6 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                     break 'local_port local_port;
                 }
             }
-
-            thread::sleep(Duration::from_secs(3));
         }
 
         logging!("RoomExperiment", "Cannot find scaffolding server.");

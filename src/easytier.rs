@@ -163,7 +163,7 @@ impl EasytierFactory {
             }
             output.push_str("\n---------------");
 
-            logging!("Easytier Core", "{}", output);
+            logging!("Easytier", "{}", output);
         });
 
         Easytier {
@@ -266,6 +266,7 @@ impl Easytier {
 
 impl Drop for Easytier {
     fn drop(&mut self) {
+        logging!("EasyTier", "Killing EasyTier.");
         let _ = self.process.lock().unwrap().kill();
     }
 }
