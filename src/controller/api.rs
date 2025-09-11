@@ -92,6 +92,8 @@ pub fn set_scanning(player: Option<String>) {
 
     thread::spawn(move || {
         let (room, port, capture) = loop {
+            thread::sleep(Duration::from_millis(200));
+
             let Some(state) = capture.try_capture() else {
                 return;
             };
@@ -103,8 +105,6 @@ pub fn set_scanning(player: Option<String>) {
                 let room = Room::create();
                 break (room.clone(), *port, state.set(AppState::HostStarting { room, port: *port }));
             }
-
-            thread::sleep(Duration::from_millis(200));
         };
 
         room.start_host(port, player, capture);
