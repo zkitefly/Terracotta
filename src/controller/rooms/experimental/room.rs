@@ -225,9 +225,10 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
         for _ in 0..5 {
             thread::sleep(Duration::from_secs(3));
             
-            let Some(mut state) = capture.try_capture() else {
+            let Some(state) = capture.try_capture() else {
                 return;
             };
+            let mut state = state.into_slow();
             let AppState::GuestStarting { easytier, .. } = state.as_mut_ref() else {
                 unreachable!();
             };
@@ -330,9 +331,10 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
     };
 
     let local_port = {
-        let Some(mut state) = capture.try_capture() else {
+        let Some(state) = capture.try_capture() else {
             return;
         };
+        let mut state = state.into_slow();
         let AppState::GuestStarting { easytier, .. } = state.as_mut_ref() else {
             unreachable!();
         };

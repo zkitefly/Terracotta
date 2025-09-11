@@ -3,8 +3,9 @@ use crate::easytier::Easytier;
 use crate::fakeserver::FakeServer;
 use crate::scanning::MinecraftScanner;
 use std::mem;
+use std::panic::Location;
 use std::sync::{Mutex, MutexGuard};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use crate::controller::Room;
 use crate::scaffolding::profile::Profile;
 
@@ -88,6 +89,7 @@ pub enum ExceptionType {
 
 pub struct AppStateContainer {
     state: MutexGuard<'static, Holder>,
+    measure: Option<(SystemTime, &'static Location<'static>)>,
 }
 
 pub struct AppStateCapture {
@@ -101,14 +103,20 @@ struct Holder {
 }
 
 impl AppState {
+    #[track_caller]
     pub fn acquire() -> AppStateContainer {
         static GLOBAL_STATE: Mutex<Holder> = Mutex::new(Holder { index: 0, sharing: 0, value: AppState::Waiting});
 
-        AppStateContainer { state: GLOBAL_STATE.lock().unwrap() }
+        AppStateContainer { state: GLOBAL_STATE.lock().unwrap(), measure: Some((SystemTime::now(), Location::caller())) }
     }
 }
 
 impl AppStateContainer {
+    pub fn into_slow(mut self) -> AppStateContainer {
+        self.measure = None;
+        self
+    }
+
     pub fn as_ref(&self) -> &AppState {
         &self.state.value
     }
@@ -149,6 +157,23 @@ impl AppStateContainer {
         self.state.sharing += 1;
 
         logging!("State", "Switch (Shared) to {:?}", &self.state.value);
+    }
+}
+
+impl Drop for AppStateContainer {
+    fn drop(&mut self) {
+        if let Some((time, location)) = self.measure &&
+            let Ok(d) = SystemTime::now().duration_since(time) &&
+            d >= Duration::from_millis(150)
+        {
+            cfg_if::cfg_if! {
+                if #[cfg(debug_assertions)] {
+                    panic!("AppState has been locked for {}ms, at {}.", d.as_millis(), location);
+                } else {
+                    logging!("State", "AppState has been locked for {}ms, at {}.", d.as_millis(), location);
+                }
+            }
+        }
     }
 }
 
