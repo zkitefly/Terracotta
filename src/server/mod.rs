@@ -48,7 +48,7 @@ fn get_meta() -> Json<Value> {
         "compile_timestamp": timestamp::compile_time!().to_string(),
         "easytier_version": env!("TERRACOTTA_ET_VERSION"),
 
-        "yggdrasil_port": controller::SCAFFOLDING_PORT.lock().map(|v| *v).ok(),
+        "yggdrasil_port": *controller::SCAFFOLDING_PORT,
 
         "target_tuple": format!(
             "{}-{}-{}-{}",
@@ -70,8 +70,6 @@ fn devtools() -> Status {
 }
 
 pub async fn server_main(port_callback: mpsc::Sender<u16>) {
-    controller::initialize();
-
     let rocket = rocket::custom(rocket::Config {
         log_level: rocket::log::LogLevel::Critical,
         port: 0,

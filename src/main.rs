@@ -420,6 +420,7 @@ async fn main_single(state: Option<Lock>, mode: Mode) {
 
     let future = server::server_main(port_callback);
     thread::spawn(|| {
+        lazy_static::initialize(&controller::SCAFFOLDING_PORT);
         lazy_static::initialize(&easytier::FACTORY);
     });
 

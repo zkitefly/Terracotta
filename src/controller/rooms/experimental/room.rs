@@ -127,10 +127,7 @@ fn from_value(value: u128) -> (String, String, String) {
 }
 
 pub fn start_host(room: Room, port: u16, player: Option<String>, capture: AppStateCapture) {
-    let scaffolding = {
-        let lock = SCAFFOLDING_PORT.lock().unwrap();
-        *lock
-    };
+    let scaffolding = *SCAFFOLDING_PORT;
 
     let mut args = compute_arguments(&room);
     args.push("--hostname".to_string());

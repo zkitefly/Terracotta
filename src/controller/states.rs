@@ -4,8 +4,8 @@ use crate::fakeserver::FakeServer;
 use crate::scanning::MinecraftScanner;
 use std::mem;
 use std::panic::Location;
-use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime};
+use parking_lot::{Mutex, MutexGuard};
 use crate::controller::Room;
 use crate::scaffolding::profile::Profile;
 
@@ -107,7 +107,7 @@ impl AppState {
     pub fn acquire() -> AppStateContainer {
         static GLOBAL_STATE: Mutex<Holder> = Mutex::new(Holder { index: 0, sharing: 0, value: AppState::Waiting});
 
-        AppStateContainer { state: GLOBAL_STATE.lock().unwrap(), measure: Some((SystemTime::now(), Location::caller())) }
+        AppStateContainer { state: GLOBAL_STATE.lock(), measure: Some((SystemTime::now(), Location::caller())) }
     }
 }
 
