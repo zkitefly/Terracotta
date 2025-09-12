@@ -178,6 +178,7 @@ impl Drop for AppStateContainer {
 }
 
 impl AppStateCapture {
+    #[track_caller]
     pub fn try_capture(&self) -> Option<AppStateContainer> {
         let container = AppState::acquire();
         let state = &container.state;
