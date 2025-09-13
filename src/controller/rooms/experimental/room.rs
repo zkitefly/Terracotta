@@ -58,17 +58,23 @@ pub fn parse(code: &str) -> Option<Room> {
     }
 
     let value: u128 = 'value: {
-        for code in code.windows("U/XXXX-XXXX-XXXX-XXXX".len()) {
-            let code = &code[2..];
+        'parse_segment: for code in code.windows("U/XXXX-XXXX-XXXX-XXXX".len()) {
+            if code[0] != 'U' || code[1] != '/' {
+                continue 'parse_segment;
+            }
 
+            let code = &code[2..];
             let mut value: u128 = 0;
             for i in (0.."XXXX-XXXX-XXXX-XXXX".len()).rev() {
                 if i == 4 || i == 9 || i == 14 {
                     if code[i] != '-' {
-                        return None;
+                        continue 'parse_segment;
                     }
                 } else {
-                    value = value * 34 + lookup_char(code[i])? as u128;
+                    match lookup_char(code[i]) {
+                        Some(v) => value = value * 34 + v as u128,
+                        None => continue 'parse_segment,
+                    }
                 }
             }
             if value.is_multiple_of(7) {
