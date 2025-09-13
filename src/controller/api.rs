@@ -12,7 +12,7 @@ use std::time::{Duration, SystemTime};
 
 pub fn get_state() -> Value {
     let state = AppState::acquire();
-    let index = unsafe { state.index() };
+    let (index, sharing_index) = state.index();
 
     match state.as_ref() {
         AppState::Waiting => {
@@ -40,7 +40,7 @@ pub fn get_state() -> Value {
                 }
             }
 
-            json!({"state": "host-ok", "index": index, "room": room.code, "profiles": Holder(profiles)})
+            json!({"state": "host-ok", "index": index, "room": room.code, "profile_index": sharing_index, "profiles": Holder(profiles)})
         }
 
         AppState::GuestConnecting { room, .. } => {
@@ -50,7 +50,7 @@ pub fn get_state() -> Value {
             json!({"state": "guest-starting", "index": index, "room": room.code})
         }
         AppState::GuestOk { server, profiles, .. } => {
-            json!({"state": "guest-ok", "index": index, "url": format!("127.0.0.1:{}", server.port), "profiles": profiles})
+            json!({"state": "guest-ok", "index": index, "url": format!("127.0.0.1:{}", server.port), "profile_index": sharing_index, "profiles": profiles})
         }
         AppState::Exception { kind, .. } => json!({
             "state": "exception",

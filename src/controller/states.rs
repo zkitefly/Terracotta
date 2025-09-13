@@ -125,8 +125,8 @@ impl AppStateContainer {
         &mut self.state.value
     }
 
-    pub unsafe fn index(&self) -> u32 {
-        self.state.index
+    pub(crate) fn index(&self) -> (u32, u32) {
+        (self.state.index, self.state.sharing)
     }
 
     pub fn set(mut self, state: AppState) -> AppStateCapture {
