@@ -2,8 +2,9 @@ use crate::scaffolding::{PacketResponse, TIMEOUT};
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr};
-use std::sync::{mpsc, Arc, RwLock};
+use std::sync::{mpsc, Arc, OnceLock};
 use std::{io, thread};
+use std::time::Duration;
 
 struct Packet {
     data: Vec<u8>,
@@ -12,7 +13,7 @@ struct Packet {
 
 pub struct ClientSession {
     channel: mpsc::Sender<Packet>,
-    alive: Arc<RwLock<bool>>,
+    alive: Arc<OnceLock<()>>,
 }
 
 impl ClientSession {
@@ -34,7 +35,7 @@ impl ClientSession {
         )?;
 
         let (sender, receiver) = mpsc::channel::<Packet>();
-        let alive = Arc::new(RwLock::new(true));
+        let alive = Arc::new(OnceLock::new());
         let alive2 = alive.clone();
 
         thread::spawn(move || {
@@ -71,10 +72,7 @@ impl ClientSession {
                     Ok(response) => handle(Some(response)),
                     Err(e) => {
                         logging!("ScaffoldingClient", "Session is closed: {:?}", e);
-                        {
-                            let mut alive = alive.write().unwrap();
-                            *alive = false;
-                        }
+                        alive.get_or_init(|| ());
 
                         handle(None);
                         return;
@@ -90,7 +88,7 @@ impl ClientSession {
     }
 
     pub fn is_alive(&self) -> bool {
-        *self.alive.read().unwrap()
+        self.alive.get().is_none()
     }
 
     pub fn send_sync<P>(&mut self, kind: (&str, &str), encoder: P) -> Option<PacketResponse>
@@ -103,14 +101,14 @@ impl ClientSession {
         });
 
         match loop {
-            match receiver.try_recv() {
+            match receiver.recv_timeout(Duration::from_millis(100)) {
                 Ok(response) => break response,
-                Err(mpsc::TryRecvError::Disconnected) => unreachable!(),
-                Err(mpsc::TryRecvError::Empty) if !*self.alive.read().unwrap() => {
+                Err(mpsc::RecvTimeoutError::Disconnected) => unreachable!(),
+                Err(mpsc::RecvTimeoutError::Timeout) if !self.is_alive() => {
                     logging!("ScaffoldingClient", "API {}:{} invocation failed: Session has been closed.", kind.0, kind.1);
                     return None;
                 },
-                Err(mpsc::TryRecvError::Empty) => continue,
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
             }
         } {
             Some(PacketResponse::Ok { data }) => Some(PacketResponse::Ok { data }),
