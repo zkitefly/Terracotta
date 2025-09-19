@@ -83,6 +83,7 @@ impl EasytierFactory {
         process
             .args(args)
             .args(["-r", &rpc.to_string()])
+            .current_dir(env::temp_dir())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
@@ -255,6 +256,7 @@ impl Easytier {
 
     fn start_cli(&mut self) -> Command {
         let mut command = Command::new(self.cli.as_path());
+        command.current_dir(env::temp_dir());
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
