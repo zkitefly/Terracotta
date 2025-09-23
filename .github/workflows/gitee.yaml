@@ -47,7 +47,7 @@ jobs:
     - name: Show release info
       run: |
         echo "Release info:"
-        echo '${{ toJSON(steps.release.outputs.result) }}'
+        echo "${{ toJSON(steps.release.outputs.result) }}"
       shell: bash
 
     - name: Download all release assets
