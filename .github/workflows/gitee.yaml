@@ -1,0 +1,89 @@
+name: Sync GitHub Release to Gitee
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+env:
+  GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+  GITEE_OWNER: ${{ vars.GITEE_OWNER }}
+  GITEE_REPO: ${{ vars.GITEE_REPO }}
+  GITEE_TARGET_COMMITISH: ${{ vars.GITEE_TARGET_COMMITISH }}
+
+jobs:
+  sync-release-to-gitee:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Get release info
+      id: release
+      uses: actions/github-script@main
+      with:
+        script: |
+          let release;
+          if (context.eventName === 'release') {
+            release = context.payload.release;
+          } else {
+            // 如果是手动触发，获取最新的 release
+            const { data: latestRelease } = await github.rest.repos.getLatestRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
+            release = latestRelease;
+          }
+          return {
+            tag_name: release.tag_name,
+            name: release.name,
+            body: release.body,
+            prerelease: release.prerelease,
+            assets: release.assets.map(asset => ({
+              name: asset.name,
+              url: asset.browser_download_url
+            })),
+            html_url: release.html_url
+          };
+
+    - name: Show release info
+      run: |
+        echo "Release info:"
+        echo '${{ toJSON(steps.release.outputs.result) }}'
+      shell: bash
+
+    - name: Download all release assets
+      run: |
+        mkdir assets
+        for url in $(jq -r '.assets[].url' <<< '${{ steps.release.outputs.result }}'); do
+          fname=$(basename "$url")
+          curl -L -o "assets/$fname" -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$url"
+        done
+      shell: bash
+
+    - name: Create Gitee Release
+      id: gitee_release
+      run: |
+        # Combine original body with GitHub release URL
+        body="${{ fromJson(steps.release.outputs.result).body }}
+
+        GitHub Release: ${{ fromJson(steps.release.outputs.result).html_url }}"
+        
+        response=$(curl -s -X POST "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases" \
+          -d "access_token=${GITEE_TOKEN}" \
+          -d "tag_name=${{ fromJson(steps.release.outputs.result).tag_name }}" \
+          -d "name=${{ fromJson(steps.release.outputs.result).name }}" \
+          -d "body=${body}" \
+          -d "prerelease=${{ fromJson(steps.release.outputs.result).prerelease }}" \
+          -d "target_commitish=${GITEE_TARGET_COMMITISH}")
+        echo "$response"
+        echo "id=$(echo $response | jq -r '.id')" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Upload assets to Gitee Release
+      run: |
+        release_id=${{ steps.gitee_release.outputs.id }}
+        for file in assets/*; do
+          curl -X POST "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/releases/${release_id}/attach_files" \
+            -F "access_token=${GITEE_TOKEN}" \
+            -F "file=@${file}"
+        done
+      shell: bash
