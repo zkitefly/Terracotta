@@ -7,9 +7,9 @@ on:
 
 env:
   GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-  GITEE_OWNER: ${{ env.GITEE_OWNER }}
-  GITEE_REPO: ${{ env.GITEE_REPO }}
-  GITEE_TARGET_COMMITISH: ${{ env.GITEE_TARGET_COMMITISH }}
+  GITEE_OWNER: ${{ vars.GITEE_OWNER }}
+  GITEE_REPO: ${{ vars.GITEE_REPO }}
+  GITEE_TARGET_COMMITISH: ${{ vars.GITEE_TARGET_COMMITISH }}
 
 jobs:
   sync-release-to-gitee:
