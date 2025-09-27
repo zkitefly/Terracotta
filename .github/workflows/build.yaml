@@ -45,13 +45,15 @@ jobs:
         run: |
           rustup target add --toolchain nightly x86_64-pc-windows-msvc
           rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
-          cargo +nightly build --release \
+          cargo +nightly build --release --target $(rustc --print host-tuple) \
             -Z build-std=core,std,alloc,proc_macro,panic_abort \
-            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
+            -Z build-std-features=default,optimize_for_size
+        env:
+          RUSTFLAGS: -Zunstable-options -Cpanic=immediate-abort
       - name: Upload Artifact
         run: |
           source="terracotta-${TERRACOTTA_VERSION}-windows-x86_64.exe"
-          cp "target/release/terracotta.exe" "$source"
+          cp "target/$(rustc --print host-tuple)/release/terracotta.exe" "$source"
           7z a "$source.zip" "$source"
           cat "$source.zip" | gh-actions-artifact-client.js upload "$source"
   build-windows-arm64:
@@ -73,15 +75,17 @@ jobs:
         run: |
           rustup target add --toolchain nightly aarch64-pc-windows-msvc
           rustup component add rust-src --toolchain nightly-aarch64-pc-windows-msvc
-          cargo +nightly build --release \
+          cargo +nightly build --release --target $(rustc --print host-tuple) \
             -Z build-std=core,std,alloc,proc_macro,panic_abort \
-            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
+            -Z build-std-features=default,optimize_for_size
+        env:
+          RUSTFLAGS: -Zunstable-options -Cpanic=immediate-abort
       - name: Install 7z
         run: choco install 7zip
       - name: Upload Artifact
         run: |
           source="terracotta-${TERRACOTTA_VERSION}-windows-arm64.exe"
-          cp "target/release/terracotta.exe" "$source"
+          cp "target/$(rustc --print host-tuple)/release/terracotta.exe" "$source"
           7z a "$source.zip" "$source"
           cat "$source.zip" | gh-actions-artifact-client.js upload "$source"
   build-linux-x86_64:
@@ -103,14 +107,16 @@ jobs:
         run: |
           rustup target add --toolchain nightly x86_64-unknown-linux-gnu
           rustup component add rust-src --toolchain nightly-x86_64-unknown-linux-gnu
-          cargo +nightly build --release \
+          cargo +nightly build --release --target $(rustc --print host-tuple) \
             -Z build-std=core,std,alloc,proc_macro,panic_abort \
-            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
+            -Z build-std-features=default,optimize_for_size
+        env:
+          RUSTFLAGS: -Zunstable-options -Cpanic=immediate-abort
       - name: Upload Artifact
         run: |
           source="terracotta-${TERRACOTTA_VERSION}-linux-x86_64"
           
-          cp "target/release/terracotta" "$source"
+          cp "target/$(rustc --print host-tuple)/release/terracotta" "$source"
           chmod 755 "$source"
           tar -cf "$source.tar" "$source"
           zip -q - "$source.tar" | gh-actions-artifact-client.js upload "$source.tar"
@@ -120,7 +126,7 @@ jobs:
           ./linux-deploy.AppImage --appdir="$(mktemp -d)" \
             --desktop-file=build/linux/terracotta.desktop \
             --icon-file=build/linux/icon.png \
-            -e "target/release/terracotta" \
+            -e "target/$(rustc --print host-tuple)/release/terracotta" \
             --output=appimage
           
           mv "Terracotta-x86_64.AppImage" "$source.AppImage"
@@ -145,14 +151,16 @@ jobs:
         run: |
           rustup target add --toolchain nightly aarch64-unknown-linux-gnu
           rustup component add rust-src --toolchain nightly-aarch64-unknown-linux-gnu
-          cargo +nightly build --release \
+          cargo +nightly build --release --target $(rustc --print host-tuple) \
             -Z build-std=core,std,alloc,proc_macro,panic_abort \
-            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
+            -Z build-std-features=default,optimize_for_size
+        env:
+          RUSTFLAGS: -Zunstable-options -Cpanic=immediate-abort
       - name: Upload Artifact
         run: |
           source="terracotta-${TERRACOTTA_VERSION}-linux-arm64"
           
-          cp "target/release/terracotta" "$source"
+          cp "target/$(rustc --print host-tuple)/release/terracotta" "$source"
           chmod 755 "$source"
           tar -cf "$source.tar" "$source"
           zip -q - "$source.tar" | gh-actions-artifact-client.js upload "$source.tar"
@@ -162,7 +170,7 @@ jobs:
           ./linux-deploy.AppImage --appdir="$(mktemp -d)" \
             --desktop-file=build/linux/terracotta.desktop \
             --icon-file=build/linux/icon.png \
-            -e "target/release/terracotta" \
+            -e "target/$(rustc --print host-tuple)/release/terracotta" \
             --output=appimage
          
           mv "Terracotta-aarch64.AppImage" "$source.AppImage"
@@ -187,14 +195,16 @@ jobs:
         run: |
           rustup target add --toolchain nightly x86_64-apple-darwin
           rustup component add rust-src --toolchain nightly-x86_64-apple-darwin
-          cargo +nightly build --release \
+          cargo +nightly build --release --target $(rustc --print host-tuple) \
             -Z build-std=core,std,alloc,proc_macro,panic_abort \
-            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
+            -Z build-std-features=default,optimize_for_size
+        env:
+          RUSTFLAGS: -Zunstable-options -Cpanic=immediate-abort
       - name: Upload Artifact
         run: |
           source="terracotta-${TERRACOTTA_VERSION}-macos-x86_64"
           
-          cp "target/release/terracotta" "$source"
+          cp "target/$(rustc --print host-tuple)/release/terracotta" "$source"
           chmod 755 "$source"
           tar -cf "$source.tar" "$source"
           zip -q - "$source.tar" | gh-actions-artifact-client.js upload "$source.tar"
@@ -205,7 +215,7 @@ jobs:
           
           cp -R build/macos/terracotta.app "$TEMP_DIR"
           mkdir -p "$TEMP_DIR/terracotta.app/Contents/MacOS/"
-          cp "target/release/terracotta" "$TEMP_DIR/terracotta.app/Contents/MacOS/terracotta"
+          cp "target/$(rustc --print host-tuple)/release/terracotta" "$TEMP_DIR/terracotta.app/Contents/MacOS/terracotta"
           
           chmod -R 755 "$TEMP_DIR/"
           PKG_OUTPUT="$source.pkg"
@@ -238,14 +248,16 @@ jobs:
         run: |
           rustup target add --toolchain nightly aarch64-apple-darwin
           rustup component add rust-src --toolchain nightly-aarch64-apple-darwin
-          cargo +nightly build --release \
+          cargo +nightly build --release --target $(rustc --print host-tuple) \
             -Z build-std=core,std,alloc,proc_macro,panic_abort \
-            -Z build-std-features=default,panic_immediate_abort,optimize_for_size
+            -Z build-std-features=default,optimize_for_size
+        env:
+          RUSTFLAGS: -Zunstable-options -Cpanic=immediate-abort
       - name: Upload Artifact
         run: |
           source="terracotta-${TERRACOTTA_VERSION}-macos-arm64"
           
-          cp "target/release/terracotta" "$source"
+          cp "target/$(rustc --print host-tuple)/release/terracotta" "$source"
           chmod 755 "$source"
           tar -cf "$source.tar" "$source"
           zip -q - "$source.tar" | gh-actions-artifact-client.js upload "$source.tar"
@@ -256,7 +268,7 @@ jobs:
           
           cp -R build/macos/terracotta.app "$TEMP_DIR"
           mkdir -p "$TEMP_DIR/terracotta.app/Contents/MacOS/"
-          cp "target/release/terracotta" "$TEMP_DIR/terracotta.app/Contents/MacOS/terracotta"
+          cp "target/$(rustc --print host-tuple)/release/terracotta" "$TEMP_DIR/terracotta.app/Contents/MacOS/terracotta"
           
           chmod -R 755 "$TEMP_DIR/"
           PKG_OUTPUT="$source.pkg"
