@@ -1,3 +1,5 @@
+use crate::controller::experimental::{MACHINE_ID, VENDOR};
+use crate::controller::rooms::legacy;
 use crate::controller::states::{AppState, AppStateCapture};
 use crate::controller::{ExceptionType, Room, RoomKind, SCAFFOLDING_PORT};
 use crate::easytier;
@@ -5,15 +7,13 @@ use crate::fakeserver::FakeServer;
 use crate::scaffolding::client::ClientSession;
 use crate::scaffolding::profile::{Profile, ProfileKind, ProfileSnapshot};
 use crate::scaffolding::PacketResponse;
+use rand_chacha::ChaCha12Rng;
 use rand_core::{OsRng, RngCore, SeedableRng, TryRngCore};
 use serde_json::{json, Value};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6, TcpListener};
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 use std::{io, thread};
-use rand_chacha::ChaCha12Rng;
-use crate::controller::experimental::{MACHINE_ID, VENDOR};
-use crate::controller::rooms::legacy;
 
 static CHARS: &[u8] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ".as_bytes();
 
@@ -227,7 +227,7 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
     let scaffolding = 'local_port: {
         for _ in 0..5 {
             thread::sleep(Duration::from_secs(3));
-            
+
             let Some(state) = capture.try_capture() else {
                 return;
             };
@@ -245,6 +245,8 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
             };
             for (hostname, ip) in players {
                 if hostname.starts_with("scaffolding-mc-server-") && let Ok(port) = u16::from_str(&hostname["scaffolding-mc-server-".len()..]) {
+                    logging!("RoomExperiment", "Scaffolding Server is at {}:{}", ip, port);
+
                     let local_port = if let Ok(socket) = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0))
                         && let Ok(address) = socket.local_addr()
                     {
@@ -253,12 +255,11 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
                         35782
                     };
 
-                    if !easytier.add_port_forward(
-                        IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-                        local_port,
-                        IpAddr::V4(ip),
-                        port,
-                    ) {
+                    if !easytier.add_port_forward(&[(
+                        SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, local_port).into(),
+                        SocketAddrV4::new(ip, port).into(),
+                    )]) {
+                        logging!("RoomExperiment", "Cannot create a port-forward {} -> {} for Scaffolding Connection.", local_port, port);
                         state.set(AppState::Exception { kind: ExceptionType::GuestEasytierCrash });
                         return;
                     };
@@ -286,16 +287,19 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
     let mut session = 'session: {
         for timeout in [4, 4, 8, 4, 8, 16] {
             thread::sleep(Duration::from_secs(timeout));
+
+            const FINGERPRINT: [u8; 16] = [0x41, 0x57, 0x48, 0x44, 0x86, 0x37, 0x40, 0x59, 0x57, 0x44, 0x92, 0x43, 0x96, 0x99, 0x85, 0x01];
             if let Ok(mut session) = ClientSession::open(IpAddr::V4(Ipv4Addr::LOCALHOST), scaffolding)
                 && let Some(response) = session.send_sync(("c", "ping"), |body| {
-                body.resize(body.len() + 16, 0x4C);
+                body.extend_from_slice(&FINGERPRINT);
             })
             {
                 let PacketResponse::Ok { data } = response else {
                     unreachable!();
                 };
 
-                if data.len() == 16 && data.iter().all(|b| *b == 0x4C) {
+                if data.len() == 16 && data == FINGERPRINT {
+                    logging!("RoomExperiment", "Scaffolding Server has been verified.");
                     break 'session session;
                 }
             }
@@ -332,6 +336,7 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
         fail(capture);
         return;
     };
+    logging!("RoomExperiment", "MC server is at {}", port);
 
     let local_port = {
         let Some(state) = capture.try_capture() else {
@@ -347,19 +352,15 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
             .map(|address| address.port())
             .unwrap_or(35783);
 
-        if easytier.add_port_forward(
-            IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-            local_port,
-            IpAddr::V4(Ipv4Addr::new(10, 144, 144, 1)),
-            port,
-        ) {
-            easytier.add_port_forward(
-                IpAddr::V6(Ipv6Addr::UNSPECIFIED),
-                local_port,
-                IpAddr::V4(Ipv4Addr::new(10, 144, 144, 1)),
-                port,
-            );
-        } else {
+
+        if !easytier.add_port_forward(&[(
+            SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, local_port).into(),
+            SocketAddrV4::new(Ipv4Addr::new(10, 144, 144, 1), port).into()
+        ), (
+            SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, local_port, 0, 0).into(),
+            SocketAddrV4::new(Ipv4Addr::new(10, 144, 144, 1), port).into()
+        )]) {
+            logging!("RoomExperiment", "Cannot create a port-forward {} -> {} for MC Connection.", local_port, port);
             state.set(AppState::Exception { kind: ExceptionType::GuestEasytierCrash });
             return;
         }
@@ -372,6 +373,7 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
             break;
         }
     }
+    logging!("RoomExperiment", "MC connection is OK.");
 
     let local = ProfileSnapshot {
         machine_id: MACHINE_ID.to_string(),

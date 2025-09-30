@@ -1,5 +1,6 @@
 use crate::EASYTIER_DIR;
-use std::net::{IpAddr, Ipv4Addr, TcpListener};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener};
+use std::str::FromStr;
 use std::{
     env, fs,
     io::{BufRead, BufReader, Cursor, Error},
@@ -9,7 +10,6 @@ use std::{
     thread,
     time::Duration,
 };
-use std::str::FromStr;
 
 static EASYTIER_ARCHIVE: (&str, &str, &[u8]) = (
     include_str!(env!("TERRACOTTA_ET_ENTRY_CONF")),
@@ -96,16 +96,9 @@ impl EasytierFactory {
         let mut process = process.spawn().unwrap();
 
         let (sender, receiver) = mpsc::channel::<String>();
-        let pump = [
-            (
-                "stdout",
-                Self::pump_std(&sender, process.stdout.take().unwrap()),
-            ),
-            (
-                "stderr",
-                Self::pump_std(&sender, process.stderr.take().unwrap()),
-            ),
-        ];
+        let pump = forward_std(&mut process, move |line| {
+            let _ = sender.send(line);
+        });
 
         let process: Arc<Mutex<Child>> = Arc::new(Mutex::new(process));
         let process2 = process.clone();
@@ -144,7 +137,7 @@ impl EasytierFactory {
             }
 
             let mut output = String::from("Easytier has exit. with status {");
-            output += &match status {
+            output.push_str(&match status {
                 Some(status) => format!(
                     "code={}, success={}",
                     status
@@ -154,12 +147,12 @@ impl EasytierFactory {
                     status.success()
                 ),
                 None => "unknown".to_string(),
-            };
+            });
             output.push_str("}. Here's the logs:\n---------------");
             for i in 0..LINES {
                 if let Some(value) = &buffer[(index + 1 + i) % LINES] {
                     output.push('\n');
-                    output.push_str(&value);
+                    output.push_str(value);
                 }
             }
             output.push_str("\n---------------");
@@ -174,25 +167,36 @@ impl EasytierFactory {
         }
     }
 
-    fn pump_std<R: std::io::Read + Send + 'static>(
-        sender: &mpsc::Sender<String>,
-        source: R,
-    ) -> thread::JoinHandle<()> {
-        let sender = sender.clone();
-        thread::spawn(move || {
-            let reader = BufReader::new(source);
-            for line in reader.lines().flatten() {
-                sender.send(line).unwrap();
-            }
-        })
-    }
-
     pub fn remove(&self) {
         let dir = self.exe.parent();
         if let Some(dir) = dir {
             let _ = fs::remove_dir_all(dir);
         }
     }
+}
+
+fn forward_std<F>(process: &mut Child, handle: F) -> [(&'static str, thread::JoinHandle<()>); 2]
+where
+    F: Fn(String) + Send + Sized + Clone + 'static,
+{
+    let handle2 = handle.clone();
+    let stdout = process.stdout.take().unwrap();
+    let stderr = process.stderr.take().unwrap();
+
+    [
+        ("stdout", thread::spawn(move || {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines().map_while(Result::ok) {
+                handle(line);
+            }
+        })),
+        ("stderr", thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().map_while(Result::ok) {
+                handle2(line);
+            }
+        }))
+    ]
 }
 
 impl Easytier {
@@ -221,42 +225,52 @@ impl Easytier {
             if let Ok(ip) = Ipv4Addr::from_str(item.as_object()?.get("ipv4")?.as_str()?) {
                 players.push((host, ip));
             }
-
         }
         Some(players)
     }
 
     pub fn add_port_forward(
         &mut self,
-        local_ip: IpAddr,
-        local_port: u16,
-        remote_ip: IpAddr,
-        remote_port: u16,
+        forwards: &[(SocketAddr, SocketAddr)]
     ) -> bool {
-        fn to_string(ip: IpAddr, port: u16) -> String {
-            match ip {
-                IpAddr::V4(ip) => format!("{}:{}", ip, port),
-                IpAddr::V6(ip) => format!("[{}]:{}", ip, port),
+        const KINDS: [&str; 2] = ["tcp", "udp"];
+
+        let mut processes = Vec::with_capacity(forwards.len() * KINDS.len());
+        for (local_socket, remote_socket) in forwards {
+            for kind in KINDS {
+                let mut process = match self.start_cli().args([
+                    "-p", &format!("127.0.0.1:{}", self.rpc), "port-forward", "add",
+                    kind, &local_socket.to_string(), &remote_socket.to_string(),
+                ]).spawn() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        logging!("EasyTier CLI", "Cannot spawn easytier cli instance: {:?}", e);
+                        return false;
+                    }
+                };
+
+                let _ = forward_std(&mut process, |line| {
+                    logging!("EasyTier CLI", "{}", line);
+                });
+
+                processes.push(process);
             }
         }
 
-        for kind in ["tcp", "udp"] {
-            if !self.start_cli()
-                .args([
-                    "-p", &format!("127.0.0.1:{}", self.rpc), "port-forward", "add",
-                    kind, &to_string(local_ip, local_port), &to_string(remote_ip, remote_port),
-                ])
-                .status()
-                .is_ok_and(|status| status.success()) {
+        for mut process in processes {
+            if !process.wait().is_ok_and(|status| status.success()) {
                 return false;
             }
         }
+
         true
     }
 
     fn start_cli(&mut self) -> Command {
         let mut command = Command::new(self.cli.as_path());
-        command.current_dir(env::temp_dir());
+        command.current_dir(env::temp_dir())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
