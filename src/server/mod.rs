@@ -8,26 +8,27 @@ use crate::{LOGGING_FILE, controller};
 mod states;
 mod statics;
 
-cfg_if::cfg_if! {
-    if #[cfg(target_os = "macos")] {
-        #[get("/log")]
-        fn download_log() -> Status {
-            use std::process::Command;
-            return match Command::new("open")
-                .arg((*LOGGING_FILE).parent().unwrap())
-                .spawn() {
-                    Ok(_) => Status::Ok,
-                    Err(e) => {
-                        logging!("Core", "Cannot open logging file: {:?}", e);
-                        Status::InternalServerError
-                    }
-                };
-        }
+#[get("/log?<fetch>")]
+fn download_log(fetch: Option<bool>) -> Result<std::fs::File, Status> {
+    let fetch = fetch.unwrap_or(false);
+
+    if cfg!(target_os = "macos") && !fetch {
+        use std::process::Command;
+
+        Err(match Command::new("open")
+            .arg((*LOGGING_FILE).parent().unwrap())
+            .spawn() {
+            Ok(_) => Status::NoContent,
+            Err(e) => {
+                logging!("Core", "Cannot open logging file: {:?}", e);
+                Status::InternalServerError
+            }
+        })
     } else {
-        #[get("/log")]
-        fn download_log() -> std::fs::File {
-            return std::fs::File::open((*LOGGING_FILE).clone()).unwrap();
-        }
+        std::fs::File::open((*LOGGING_FILE).clone()).map_err(|e| {
+            logging!("Core", "Cannot open logging file: {:?}", e);
+            Status::InternalServerError
+        })
     }
 }
 
