@@ -1,7 +1,7 @@
 use crate::controller::states::AppState;
 use crate::controller::{ExceptionType, Room};
 use crate::scaffolding::profile::Profile;
-use crate::scanning::MinecraftScanner;
+use crate::mc::scanning::MinecraftScanner;
 use crate::MOTD;
 use rocket::serde::Serialize;
 use serde::ser::SerializeSeq;

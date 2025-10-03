@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Formatter};
 use crate::easytier::Easytier;
-use crate::fakeserver::FakeServer;
-use crate::scanning::MinecraftScanner;
+use crate::mc::fakeserver::FakeServer;
+use crate::mc::scanning::MinecraftScanner;
 use std::mem;
 use std::panic::Location;
 use std::time::{Duration, SystemTime};

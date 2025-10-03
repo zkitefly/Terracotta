@@ -1,7 +1,7 @@
 use crate::controller::states::{AppState, AppStateCapture};
 use crate::controller::{ExceptionType, Room, RoomKind};
 use crate::easytier;
-use crate::fakeserver::FakeServer;
+use crate::mc::fakeserver::FakeServer;
 use num_bigint::BigUint;
 use socket2::{Domain, SockAddr, Socket, Type};
 use std::mem::MaybeUninit;

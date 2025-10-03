@@ -37,8 +37,6 @@ use chrono::{FixedOffset, TimeZone, Utc};
 
 pub mod controller;
 pub mod easytier;
-pub mod fakeserver;
-pub mod scanning;
 pub mod server;
 pub mod scaffolding;
 
@@ -56,6 +54,7 @@ pub mod lock_windows;
 use lock_windows::State as Lock;
 #[cfg(target_family = "unix")]
 pub mod lock_unix;
+mod mc;
 
 #[cfg(target_family = "unix")]
 use lock_unix::State as Lock;

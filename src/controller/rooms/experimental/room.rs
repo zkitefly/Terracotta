@@ -3,7 +3,7 @@ use crate::controller::rooms::legacy;
 use crate::controller::states::{AppState, AppStateCapture};
 use crate::controller::{ExceptionType, Room, RoomKind, SCAFFOLDING_PORT};
 use crate::easytier;
-use crate::fakeserver::FakeServer;
+use crate::mc::fakeserver::FakeServer;
 use crate::scaffolding::client::ClientSession;
 use crate::scaffolding::profile::{Profile, ProfileKind, ProfileSnapshot};
 use crate::scaffolding::PacketResponse;

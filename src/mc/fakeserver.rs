@@ -18,6 +18,11 @@ impl FakeServer {
 }
 
 fn run(port: u16, motd: &'static str, signal: Receiver<()>) {
+    lazy_static::lazy_static! {
+        static ref ADDR_V4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(224, 0, 2, 60)), 4445);
+        static ref ADDR_V6: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0xFF75, 0x230, 0, 0, 0, 0, 0, 0x60)), 4445);
+    }
+
     let sockets: Vec<(UdpSocket, &'static SocketAddr)> = crate::ADDRESSES
         .iter()
         .map(|address| -> io::Result<(UdpSocket, &'static SocketAddr)> {
@@ -27,21 +32,11 @@ fn run(port: u16, motd: &'static str, signal: Receiver<()>) {
                     socket.set_broadcast(true)?;
                     socket.set_multicast_ttl_v4(4)?;
                     socket.set_multicast_loop_v4(true)?;
-
-                    lazy_static::lazy_static! {
-                        static ref ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(224, 0, 2, 60)), 4445);
-                    }
-
-                    &ADDR
+                    &ADDR_V4
                 }
                 IpAddr::V6(_) => {
                     socket.set_multicast_loop_v6(true)?;
-
-                    lazy_static::lazy_static! {
-                        static ref ADDR: SocketAddr = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0xFF75, 0x230, 0, 0, 0, 0, 0, 0x60)), 4445);
-                    }
-
-                    &ADDR
+                    &ADDR_V6
                 }
             };
 
@@ -51,7 +46,6 @@ fn run(port: u16, motd: &'static str, signal: Receiver<()>) {
         .collect();
 
     let message: String = format!("[MOTD]{}[/MOTD][AD]{}[/AD]", motd, port);
-    let message_bytes = message.as_bytes();
 
     loop {
         if let Err(mpsc::TryRecvError::Disconnected) = signal.try_recv() {
@@ -59,7 +53,7 @@ fn run(port: u16, motd: &'static str, signal: Receiver<()>) {
         }
 
         for (socket, address) in sockets.iter() {
-            let _ = socket.send_to(message_bytes, address);
+            let _ = socket.send_to(message.as_bytes(), address);
         }
 
         thread::sleep(Duration::from_millis(1500));
