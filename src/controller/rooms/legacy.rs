@@ -134,10 +134,11 @@ pub fn check_mc_conn(port: u16) -> bool {
         &SockAddr::from(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port)),
         Duration::from_secs(64),
     ) && let Ok(_) = socket.send(&[0xFE]) {
-        let mut buf: [MaybeUninit<u8>; 1] = unsafe { MaybeUninit::uninit().assume_init() };
+        let mut buf: [MaybeUninit<u8>; _] = [MaybeUninit::uninit(); 1];
 
         if let Ok(size) = socket.recv(&mut buf)
             && size >= 1
+            // SAFETY: The first byte has been initialized by recv, as size >= 1
             && unsafe { buf[0].assume_init() } == 0xFF
         {
             return true;

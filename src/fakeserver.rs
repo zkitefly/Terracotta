@@ -5,7 +5,7 @@ use std::time::Duration;
 
 pub struct FakeServer {
     pub port: u16,
-    _signal: Sender<()>,
+    _holder: Sender<()>,
 }
 
 impl FakeServer {
@@ -13,7 +13,7 @@ impl FakeServer {
         let (tx, rx) = mpsc::channel::<()>();
         thread::spawn(move || run(port, motd, rx));
 
-        FakeServer { port, _signal: tx }
+        FakeServer { port, _holder: tx }
     }
 }
 
