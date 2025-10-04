@@ -88,3 +88,11 @@ debug = false
 debug-assertions = false
 overflow-checks = false
 incremental = false
+
+[profile.release-fast]
+inherits = "release"
+codegen-units = 64
+
+[profile.release-fast.package."*"]
+inherits = "release"
+codegen-units = 64
