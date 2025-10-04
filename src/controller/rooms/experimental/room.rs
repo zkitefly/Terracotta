@@ -557,20 +557,23 @@ static FALLBACK_SERVERS: [&str; 2] = [
 ];
 
 fn compute_arguments(room: &Room) -> Vec<String> {
-    static DEFAULT_ARGUMENTS: [&str; 5] = [
+    static DEFAULT_ARGUMENTS: [&str; 7] = [
         "--no-tun",
         "--compression=zstd",
         "--multi-thread",
         "--latency-first",
         "--enable-kcp-proxy",
+        "-l",
+        "udp://0.0.0.0:0",
     ];
 
-    let mut args = vec![
+    let mut args: Vec<String> = Vec::with_capacity(32);
+    args.extend_from_slice(&[
         "--network-name".to_string(),
         room.network_name.clone(),
         "--network-secret".to_string(),
         room.network_secret.clone(),
-    ];
+    ]);
 
     match fetch_public_nodes(room) {
         Ok(nodes) => {
