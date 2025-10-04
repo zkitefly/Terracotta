@@ -105,6 +105,7 @@ lazy_static! {
 
         path
     };
+    static ref MACHINE_ID_FILE: std::path::PathBuf = FILE_ROOT.join("machine-id");
     static ref WORKING_DIR: std::path::PathBuf = {
         use chrono::{Datelike, Timelike};
         let now = chrono::Local::now();
