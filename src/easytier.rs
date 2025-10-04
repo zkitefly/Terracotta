@@ -6,10 +6,12 @@ use std::{
     io::{BufRead, BufReader, Cursor, Error},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{mpsc, Arc, Mutex},
+    sync::{mpsc, Arc},
     thread,
     time::Duration,
 };
+use std::fmt::Write;
+use parking_lot::Mutex;
 
 static EASYTIER_ARCHIVE: (&str, &str, &[u8]) = (
     include_str!(env!("TERRACOTTA_ET_ENTRY_CONF")),
@@ -82,7 +84,7 @@ impl EasytierFactory {
         let mut process = Command::new(self.exe.as_path());
         process
             .args(args)
-            .args(["-r", &rpc.to_string()])
+            .args(["-r", &rpc.to_string(), "--unknown-argument"])
             .current_dir(env::temp_dir())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -96,7 +98,7 @@ impl EasytierFactory {
         let mut process = process.spawn().unwrap();
 
         let (sender, receiver) = mpsc::channel::<String>();
-        let pump = forward_std(&mut process, move |line| {
+        forward_std(&mut process, move |line| {
             let _ = sender.send(line);
         });
 
@@ -109,53 +111,44 @@ impl EasytierFactory {
             let mut buffer: [Option<String>; LINES] = [const { None }; LINES];
             let mut index = 0;
 
-            let status = loop {
-                {
-                    let mut process = process2.lock().unwrap();
-                    if let Ok(value) = process.try_wait() {
-                        if let Some(_) = value {
-                            break value;
+            let status = 'status: loop {
+                match receiver.recv_timeout(Duration::from_millis(100)) {
+                    Ok(value) => {
+                        buffer[index] = Some(value);
+                        index = (index + 1) % LINES;
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => {},
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        match process2.lock().try_wait() {
+                            Ok(Some(status)) => break 'status Some(status),
+                            Ok(None) => {
+                                logging!("EasyTier", "Cannot fetch EasyTier process status: EasyTier hasn't exited.");
+                            },
+                            Err(e) => {
+                                logging!("EasyTier", "Cannot fetch EasyTier process status: {:?}", e);
+                            },
                         }
-                    } else {
-                        break None;
+                        break 'status None;
                     }
                 }
-
-                if let Ok(value) = receiver.try_recv() {
-                    buffer[index] = Some(value);
-                    index = (index + 1) % LINES;
-                }
-
-                thread::sleep(Duration::from_millis(100));
             };
 
-            thread::sleep(Duration::from_secs(3));
-            for (name, join) in pump.into_iter() {
-                if !join.is_finished() {
-                    logging!("UI", "Logging adapter {} has hang for 3s.", name);
-                }
+            let mut output = String::from("Easytier has exited. with status ");
+            match status {
+                Some(status) => match status.code() {
+                    Some(code) => write!(output, "code={}, success={}", code, status.success()),
+                    None => write!(output, "code=[unknown], success={}", status.success()),
+                }.unwrap(),
+                None => output.push_str("[unknown]"),
             }
-
-            let mut output = String::from("Easytier has exit. with status {");
-            output.push_str(&match status {
-                Some(status) => format!(
-                    "code={}, success={}",
-                    status
-                        .code()
-                        .map(|i| i.to_string())
-                        .unwrap_or_else(|| "unknown".to_string()),
-                    status.success()
-                ),
-                None => "unknown".to_string(),
-            });
-            output.push_str("}. Here's the logs:\n---------------");
+            output.push_str(". Here's the logs:\n############################################################");
             for i in 0..LINES {
                 if let Some(value) = &buffer[(index + 1 + i) % LINES] {
-                    output.push('\n');
+                    output.push_str("\n    ");
                     output.push_str(value);
                 }
             }
-            output.push_str("\n---------------");
+            output.push_str("\n############################################################");
 
             logging!("Easytier", "{}", output);
         });
@@ -175,37 +168,36 @@ impl EasytierFactory {
     }
 }
 
-fn forward_std<F>(process: &mut Child, handle: F) -> [(&'static str, thread::JoinHandle<()>); 2]
+fn forward_std<F>(process: &mut Child, handle: F)
 where
     F: Fn(String) + Send + Sized + Clone + 'static,
 {
     let handle2 = handle.clone();
-    let stdout = process.stdout.take().unwrap();
-    let stderr = process.stderr.take().unwrap();
 
-    [
-        ("stdout", thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines().map_while(Result::ok) {
-                handle(line);
-            }
-        })),
-        ("stderr", thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines().map_while(Result::ok) {
-                handle2(line);
-            }
-        }))
-    ]
+    let stdout = process.stdout.take().unwrap();
+    thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines().map_while(Result::ok) {
+            handle(line);
+        }
+    });
+
+    let stderr = process.stderr.take().unwrap();
+    thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines().map_while(Result::ok) {
+            handle2(line);
+        }
+    });
 }
 
 impl Easytier {
     pub fn kill(self) {
-        let _ = self.process.lock().unwrap().kill();
+        let _ = self.process.lock().kill();
     }
 
     pub fn is_alive(&mut self) -> bool {
-        if let Ok(value) = self.process.lock().unwrap().try_wait() {
+        if let Ok(value) = self.process.lock().try_wait() {
             !value.is_some()
         } else {
             false
@@ -249,7 +241,7 @@ impl Easytier {
                     }
                 };
 
-                let _ = forward_std(&mut process, |line| {
+                forward_std(&mut process, |line| {
                     logging!("EasyTier CLI", "{}", line);
                 });
 
@@ -283,6 +275,6 @@ impl Easytier {
 impl Drop for Easytier {
     fn drop(&mut self) {
         logging!("EasyTier", "Killing EasyTier.");
-        let _ = self.process.lock().unwrap().kill();
+        let _ = self.process.lock().kill();
     }
 }
