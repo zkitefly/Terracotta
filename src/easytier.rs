@@ -84,7 +84,7 @@ impl EasytierFactory {
         let mut process = Command::new(self.exe.as_path());
         process
             .args(args)
-            .args(["-r", &rpc.to_string(), "--unknown-argument"])
+            .args(["-r", &rpc.to_string()])
             .current_dir(env::temp_dir())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
