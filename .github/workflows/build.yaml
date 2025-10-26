@@ -166,6 +166,74 @@ jobs:
           chmod 755 "$source"
           tar -cf "$source.tar" "$source"
           zip -q - "$source.tar" | gh-actions-artifact-client.js upload "$source.tar"
+  build-linux-riscv64:
+    runs-on: ubuntu-24.04
+    name: Build for Linux RISC-V 64
+    env:
+      TARGET: riscv64gc-unknown-linux-gnu
+      GLIBC_VERSION: 2.27
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install GitHub Artifact Client
+        uses: lhotari/gh-actions-artifact-client@v2
+      - name: Compute Version
+        run: |
+          if [ -z "${{ github.event.inputs.version }}" ]; then
+            echo "TERRACOTTA_VERSION=${GITHUB_SHA::7}" >> $GITHUB_ENV
+          else
+            echo "TERRACOTTA_VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          fi
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --force
+      - name: Build
+        run: |
+          rustup target add --toolchain nightly "$TARGET"
+          cargo +nightly zigbuild --release --target "$TARGET.$GLIBC_VERSION"
+      - name: Upload Artifact
+        run: |
+          source="terracotta-${TERRACOTTA_VERSION}-linux-riscv64"
+
+          cp "target/$TARGET/release/terracotta" "$source"
+          chmod 755 "$source"
+          tar -cf "$source.tar" "$source"
+          zip -q - "$source.tar" | gh-actions-artifact-client.js upload "$source.tar"
+  build-linux-loongarch64:
+    runs-on: ubuntu-24.04
+    name: Build for Linux LoongArch64
+    env:
+      TARGET: loongarch64-unknown-linux-gnu
+      GLIBC_VERSION: 2.36
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install GitHub Artifact Client
+        uses: lhotari/gh-actions-artifact-client@v2
+      - name: Compute Version
+        run: |
+          if [ -z "${{ github.event.inputs.version }}" ]; then
+            echo "TERRACOTTA_VERSION=${GITHUB_SHA::7}" >> $GITHUB_ENV
+          else
+            echo "TERRACOTTA_VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          fi
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --force
+      - name: Build
+        run: |
+          rustup target add --toolchain nightly "$TARGET"
+          cargo +nightly zigbuild --release --target "$TARGET.$GLIBC_VERSION"
+      - name: Upload Artifact
+        run: |
+          source="terracotta-${TERRACOTTA_VERSION}-linux-loongarch64"
+
+          cp "target/$TARGET/release/terracotta" "$source"
+          chmod 755 "$source"
+          tar -cf "$source.tar" "$source"
+          zip -q - "$source.tar" | gh-actions-artifact-client.js upload "$source.tar"
   build-macos-x86_64:
     runs-on: macos-15-intel
     name: Build for MacOS x86_64
@@ -275,7 +343,7 @@ jobs:
   assemble-packages:
     runs-on: ubuntu-latest
     name: Assemble Artifact
-    needs: [build-windows-x86_64, build-windows-arm64, build-linux-x86_64, build-linux-arm64, build-macos-x86_64, build-macos-arm64]
+    needs: [ build-windows-x86_64, build-windows-arm64, build-linux-x86_64, build-linux-arm64, build-linux-riscv64, build-linux-loongarch64, build-macos-x86_64, build-macos-arm64 ]
     steps:
       - name: Install GitHub Artifact Client
         uses: lhotari/gh-actions-artifact-client@v2
@@ -301,6 +369,8 @@ jobs:
           artifacts_tar=(
             "terracotta-${TERRACOTTA_VERSION}-linux-x86_64"
             "terracotta-${TERRACOTTA_VERSION}-linux-arm64"
+            "terracotta-${TERRACOTTA_VERSION}-linux-riscv64"
+            "terracotta-${TERRACOTTA_VERSION}-linux-loongarch64"
             "terracotta-${TERRACOTTA_VERSION}-macos-x86_64"
             "terracotta-${TERRACOTTA_VERSION}-macos-arm64"
           )
@@ -325,6 +395,8 @@ jobs:
             tar -czvf terracotta-${TERRACOTTA_VERSION}-windows-arm64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-windows-arm64.exe
             tar -czvf terracotta-${TERRACOTTA_VERSION}-linux-x86_64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-linux-x86_64
             tar -czvf terracotta-${TERRACOTTA_VERSION}-linux-arm64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-linux-arm64
+            tar -czvf terracotta-${TERRACOTTA_VERSION}-linux-riscv64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-linux-riscv64
+            tar -czvf terracotta-${TERRACOTTA_VERSION}-linux-loongarch64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-linux-loongarch64
           
             tar -czvf terracotta-${TERRACOTTA_VERSION}-macos-x86_64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-macos-x86_64 terracotta-${TERRACOTTA_VERSION}-macos-x86_64.pkg
             tar -czvf terracotta-${TERRACOTTA_VERSION}-macos-arm64-pkg.tar.gz terracotta-${TERRACOTTA_VERSION}-macos-arm64 terracotta-${TERRACOTTA_VERSION}-macos-arm64.pkg
