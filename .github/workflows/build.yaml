@@ -2,10 +2,7 @@ name: Rust-Cargo Build
 
 on:
   push:
-    paths:
-      - '**'
-      - '!.github/**'
-      - '.github/workflows/build.yaml'
+  pull_request:
   workflow_dispatch:
     inputs:
       version:
