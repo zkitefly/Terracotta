@@ -598,7 +598,7 @@ fn fetch_public_nodes(room: &Room) -> io::Result<Vec<String>> {
             .timeout(Some(Duration::from_secs(10)))
             .build()
             .map_err(io::Error::other)?
-            .get("https://uptime.easytier.cn/api/nodes?page=1&per_page=50&is_active=true")
+            .get("https://uptime.easytier.cn/api/nodes?is_active=true&page=1&per_page=100&&tags=MC%E4%B8%AD%E7%BB%A7")
             .send()
             .map_err(io::Error::other)?
     ).map_err(io::Error::other)?
