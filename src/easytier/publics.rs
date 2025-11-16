@@ -22,7 +22,7 @@ pub fn fetch_public_nodes(room: &Room) -> PublicServers {
                 .timeout(Some(Duration::from_secs(10)))
                 .build()
                 .map_err(io::Error::other)?
-                .get("https://uptime.easytier.cn/api/nodes?is_active=true&page=1&per_page=100&&tags=MC%E4%B8%AD%E7%BB%A7")
+                .get("https://uptime.easytier.cn/api/nodes?is_active=true&page=1&per_page=500&&tags=MC%E4%B8%AD%E7%BB%A7")
                 .send()
                 .map_err(io::Error::other)?
         ).map_err(io::Error::other)?
