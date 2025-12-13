@@ -11,6 +11,13 @@ cfg_if! {
     if #[cfg(not(target_os = "android"))] {
         mod executable_impl;
         use executable_impl as inner;
+
+        pub use inner::{initialize, cleanup};
+    } else {
+        mod linkage_impl;
+        use linkage_impl as inner;
+
+        pub use inner::EasyTierTunRequest;
     }
 }
 
@@ -56,14 +63,6 @@ pub fn calc_conn_difficulty(left: &NatType, right: &NatType) -> ConnectionDiffic
 
 pub fn create(args: Vec<Argument>) -> EasyTier {
     EasyTier(inner::create(args))
-}
-
-pub fn initialize() {
-    inner::initialize();
-}
-
-pub fn cleanup() {
-    inner::cleanup();
 }
 
 impl EasyTier {
