@@ -287,6 +287,8 @@ pub fn start_guest(room: Room, player: Option<String>, capture: AppStateCapture)
 
             *difficulty = easytier::calc_conn_difficulty(local_nat, server_nat);
             logging!("RoomExperiment", "Current NAT status: {:?} -> {:?}, difficulty = {:?}", local_nat, server_nat, difficulty);
+            state.increase_shared();
+
             break 'local_port (local_port, *server_address);
         }
 
