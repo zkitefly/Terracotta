@@ -39,6 +39,11 @@
 - **官网**：[SJMCL](https://mc.sjtu.cn/sjmcl)
 - **源码**：[UNIkeEN/SJMCL](https://github.com/UNIkeEN/SJMCL)
 
+### Axolotl
+
+- **官网**：[Axolotl](https://axlmc.org/)
+- **源码**：[Mystic-Stars/Axolotl](https://github.com/Mystic-Stars/Axolotl)
+
 ## 游戏模组（Mods）
 
 ### VoxLink
