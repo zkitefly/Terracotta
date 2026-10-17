@@ -338,3 +338,143 @@ NAT 类型取值：`Unknown`、`OpenInternet`、`NoPAT`、`FullCone`、`Restrict
 6. **获取 MC 端口**：发送 `c:server_port`，读取 2 字节大端端口号。
 7. **转发 MC 端口**：将房主 MC 端口转发到本地（TCP + UDP），并在本地启动一个假的 Minecraft 服务器作为「陶瓦联机大厅」入口（显示 MOTD `§6§l双击进入陶瓦联机大厅（请保持陶瓦运行）`）。
 8. **心跳与列表同步**：每 5 秒发送 `c:player_ping` 与 `c:player_profiles_list`。
+
+## 附录：代码示例
+
+以下示例以 Python 编写，仅作参考实现，逻辑与陶瓦源码一致，可据此移植到其他语言。
+
+### 邀请码解析
+
+从任意文本中提取邀请码，并派生 EasyTier 网络名与密钥：
+
+```python
+CHARS = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+SEGMENT_LEN = len("U/XXXX-XXXX-XXXX-XXXX")  # 21
+
+
+def parse_code(text: str):
+    """从文本中解析陶瓦邀请码。
+
+    成功时返回 (network_name, network_secret)，否则返回 None。
+    """
+    text = text.upper()
+
+    for start in range(len(text) - SEGMENT_LEN + 1):
+        segment = text[start:start + SEGMENT_LEN]
+        if segment[0] != 'U' or segment[1] != '/':
+            continue
+
+        # 从最后一个字符 v15 开始向前逐位计算 value
+        value = 0
+        valid = True
+        body = segment[2:]  # "XXXX-XXXX-XXXX-XXXX"
+        for i in range(len(body) - 1, -1, -1):
+            if i in (4, 9, 14):
+                if body[i] != '-':
+                    valid = False
+                    break
+                continue
+            c = body[i]
+            if c == 'I':
+                c = '1'
+            elif c == 'O':
+                c = '0'
+            if c not in CHARS:
+                valid = False
+                break
+            value = value * 34 + CHARS.index(c)
+
+        if not valid or value % 7 != 0:
+            continue
+
+        # 从 value 恢复 v0..v15，拼接网络名与密钥
+        digits = []
+        v = value
+        for _ in range(16):
+            digits.append(CHARS[v % 34])
+            v //= 34
+        low = "".join(digits[0:8])    # v0..v7
+        high = "".join(digits[8:16])  # v8..v15
+        network_name = f"scaffolding-mc-{low[:4]}-{low[4:]}"
+        network_secret = f"{high[:4]}-{high[4:]}"
+        return network_name, network_secret
+
+    return None
+```
+
+### 脚手架客户端
+
+演示帧编码、握手验证与获取房主 MC 端口：
+
+```python
+import json
+import socket
+import struct
+
+FINGERPRINT = bytes([
+    0x41, 0x57, 0x48, 0x44, 0x86, 0x37, 0x40, 0x59,
+    0x57, 0x44, 0x92, 0x43, 0x96, 0x99, 0x85, 0x01,
+])
+
+
+class ScaffoldingClient:
+    """陶瓦脚手架协议客户端。读写超时均为 64 秒。"""
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 13448):
+        self.sock = socket.create_connection((host, port), timeout=64)
+        self.sock.settimeout(64)
+
+    def request(self, kind: str, body: bytes = b"") -> bytes:
+        """发送一条请求并返回响应 body。失败时抛出 RuntimeError。"""
+        kind_bytes = kind.encode("utf-8")
+        assert len(kind_bytes) <= 255
+
+        # 请求帧：kind_size(1) + kind + body_size(4, BE) + body
+        frame = (
+            bytes([len(kind_bytes)])
+            + kind_bytes
+            + struct.pack(">I", len(body))
+            + body
+        )
+        self.sock.sendall(frame)
+
+        # 响应帧：status(1) + body_size(4, BE) + body
+        header = self._read_exact(5)
+        status = header[0]
+        body_size = struct.unpack(">I", header[1:5])[0]
+        data = self._read_exact(body_size)
+        if status != 0:
+            raise RuntimeError(
+                f"请求 {kind} 失败，status={status}: {data.decode(errors='replace')}"
+            )
+        return data
+
+    def _read_exact(self, n: int) -> bytes:
+        buf = b""
+        while len(buf) < n:
+            chunk = self.sock.recv(n - len(buf))
+            if not chunk:
+                raise ConnectionError("连接已断开")
+            buf += chunk
+        return buf
+
+
+# 接入流程示例（local_scaffolding_port 为脚手架端口转发到本地的端口）
+client = ScaffoldingClient(port=local_scaffolding_port)
+
+# 1. 握手 / 指纹验证
+assert client.request("c:ping", FINGERPRINT) == FINGERPRINT
+
+# 2. 获取房主 Minecraft 端口
+mc_port = struct.unpack(">H", client.request("c:server_port"))[0]
+
+# 3. 心跳上报（每 5 秒一次）
+client.request("c:player_ping", json.dumps({
+    "name": "玩家名称",
+    "machine_id": "0123456789abcdef0123456789abcdef",
+    "vendor": "MyLauncher 1.0",
+}).encode("utf-8"))
+
+# 4. 获取玩家列表
+players = json.loads(client.request("c:player_profiles_list"))
+```
