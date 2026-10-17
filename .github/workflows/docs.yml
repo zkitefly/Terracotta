@@ -13,7 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            sites
+            .github/workflows/docs.yml
+          sparse-checkout-cone-mode: false
 
       - name: Deploy MkDocs
         uses: mhausenblas/mkdocs-deploy-gh-pages@master
