@@ -19,7 +19,10 @@ theme:
 
 nav:
   - 首页: index.md
-  # - 下载: download.md
+  - HTTP API: api.md
+  - 内部协议: internal-protocol.md
+  - 公共节点: public-server.md
+  - 集成列表: integrations.md
 
 markdown_extensions:
   - pymdownx.highlight:
