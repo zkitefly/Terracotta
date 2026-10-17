@@ -82,7 +82,7 @@ https://etnode.zkitefly.eu.org/node1
 https://etnode.zkitefly.eu.org/node2
 ```
 
-集成方可自行追加更多节点（对应陶瓦 HTTP API 的 `public_nodes` 参数）。
+集成方可自行追加更多节点（对应陶瓦 HTTP API 的 `public_nodes` 参数），追加的节点会与内置节点合并。
 
 ### 房主额外参数
 

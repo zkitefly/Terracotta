@@ -14,7 +14,7 @@ Terracotta 内嵌了一个 HTTP 服务，同时托管 Web 控制界面与控制 
 
 | 方式 | 说明 |
 | --- | --- |
-| `--hmcl <file>` 启动参数 | 以集成模式启动：`terracotta --hmcl <file>`。服务就绪后向 `<file>` 写入 JSON `{"port": <端口>}`（先写 `<file>.tmp` 再原子重命名）。Windows 下主进程会委托子进程启动，并最多等待 8 秒检查文件是否生成。 |
+| `--hmcl <file>` 启动参数 | 以集成模式启动：`terracotta --hmcl <file>`。HTTP 服务就绪后，端口会以 JSON `{"port": <端口>}` 的形式写入 `<file>`——实际先落盘 `<file>.tmp`、再改名为 `<file>`，保证读取方任意时刻拿到的都是完整内容。Windows 下 `--hmcl` 进程仅作为引导：fork 出子进程作为真正的工作进程，主进程则等待 `<file>` 出现，最长 8 秒，超时即报错退出。 |
 | 锁文件 `terracotta.lock` | 位于数据目录：macOS 为 `~/terracotta/`，其他平台为系统临时目录下的 `terracotta/`（如 Windows 的 `%TEMP%\terracotta`、Linux 的 `/tmp/terracotta`）。内容为 2 字节大端端口号。若已有实例在运行，新进程会作为「附属进程」直接复用该端口。 |
 
 ## API 一览
@@ -184,6 +184,8 @@ GET /state/guesting?room={邀请码}&player={显示名}&public_nodes={节点}
 - 邀请码有效且当前处于 `waiting` 状态：返回 `200`；
 - 邀请码格式错误或当前不在 `waiting` 状态：返回 `400 Bad Request`。
 
+> **实现提示**：也可以发后即忘——不检查返回值，让轮询自然进入 `exception` 状态来反馈错误。
+
 ### 运维接口
 
 | 接口 | 说明 |
@@ -200,14 +202,14 @@ GET /state/guesting?room={邀请码}&player={显示名}&public_nodes={节点}
 
 ## 典型接入流程
 
-以启动器集成为例：
+以 HMCL 启动器集成为例：
 
-1. 执行 `terracotta --hmcl <file>` 启动陶瓦，读取 `<file>` 中的 `{"port": ...}` 获得端口。
+1. 启动器启动陶瓦进程（HMCL 以 `terracotta --hmcl <path>` 启动，等待临时文件出现获取端口）。
 2. （可选）调用 `GET /meta` 展示版本信息。
-3. 用户点击「创建房间」→ 调用 `GET /state/scanning?player=...`。
-4. 轮询 `GET /state`，`host-ok` 时展示 `room` 邀请码与成员列表。
-5. 用户点击「加入房间」→ 调用 `GET /state/guesting?room=...`；若返回 `400`，提示邀请码格式错误。
+3. 启动器启动后台轮询线程，按双频率策略请求 `GET /state`：UI 活跃时约 500ms、后台闲置时约 15s。
+4. 用户点击「创建房间」→ 调用 `GET /state/scanning?player={显示名}&public_nodes={节点}&public_nodes={节点}...`。随后轮询线程会自然收到 `host-ok` 状态，展示 `room` 邀请码与成员列表。
+5. 用户点击「加入房间」→ 同样先拉取节点列表，再调用 `GET /state/guesting?room={邀请码}&player={显示名}&public_nodes={节点}...`。
 6. `guest-ok` 后，将 `url` 作为多人游戏备用直连地址展示。
 7. 用户返回主页 → 调用 `GET /state/ide`。
 8. 需要退出陶瓦时 → 调用 `GET /panic?peaceful=true`。
-9. 轮询连续失败 3 次以上时，可视为陶瓦进程已退出或异常。
+9. 轮询连续 5 次重试均失败后，可视为陶瓦进程已退出或异常。
