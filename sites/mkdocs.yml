@@ -33,7 +33,3 @@ markdown_extensions:
   - pymdownx.tabbed
   - admonition
   - footnotes
-
-plugins:
-  - search:
-      lang: zh
