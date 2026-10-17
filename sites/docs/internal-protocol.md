@@ -33,7 +33,7 @@
 
 ### 解码：从邀请码恢复 `value`
 
-解析时，先将输入转为大写，并把其中的 `I` 视作 `1`、`O` 视作 `0`。随后在整段文本中滑动查找以 `U/` 开头、长度为 19 个字符的片段（即 `U/` 加上 `XXXX-XXXX-XXXX-XXXX`）。从该片段的最后一个字符 `v15` 开始向前逐位计算 `value`：每遇到一个非短横线字符，就执行 `value = value * 34 + 该字符对应的数值`，而位置 4、9、14 处必须是短横线。最终校验 `value` 是否能被 7 整除，不满足则该邀请码无效。这种滑动查找的方式意味着邀请码可以嵌在任意更长的文本中，而不要求它独占整段输入。
+解析时，先将输入转为大写，并把其中的 `I` 视作 `1`、`O` 视作 `0`。随后在整段文本中滑动查找以 `U/` 开头、长度为 21 个字符的片段（即 `U/` 加上 `XXXX-XXXX-XXXX-XXXX`）。从该片段的最后一个字符 `v15` 开始向前逐位计算 `value`：每遇到一个非短横线字符，就执行 `value = value * 34 + 该字符对应的数值`，而位置 4、9、14 处必须是短横线。最终校验 `value` 是否能被 7 整除，不满足则该邀请码无效。这种滑动查找的方式意味着邀请码可以嵌在任意更长的文本中，而不要求它独占整段输入。
 
 ## 二、EasyTier 组网
 
@@ -138,7 +138,34 @@ easytier-cli -p "127.0.0.1:<rpc_port>" -o json peer
 
 ### 端口转发
 
-房客通过 `easytier-cli` 添加端口转发规则，将房主的服务映射到本地：
+EasyTier 支持两种端口转发方式，二者等价。
+
+#### 方式一：启动参数直接指定
+
+在启动 `easytier-core` 时通过 `--port-forward` 参数指定转发规则，格式为：
+
+```bash
+easytier-core \
+  --port-forward="tcp://<local_addr>/<remote_addr>" \
+  --port-forward="udp://<local_addr>/<remote_addr>"
+```
+
+- `<proto>`：`tcp` 或 `udp`。
+- `<local_addr>`：本机监听地址与端口，如 `0.0.0.0:13448`。
+- `<remote_addr>`：远端（房主）目标地址与端口，如 `10.144.144.1:13448`。
+
+示例（同时添加脚手架与 Minecraft 的转发）：
+
+```bash
+easytier-core \
+  --port-forward="tcp://0.0.0.0:<local_scaffolding_port>/<host_ip>:<scaffolding_port>" \
+  --port-forward="tcp://0.0.0.0:<local_mc_port>/<host_ip>:<mc_port>" \
+  --port-forward="udp://0.0.0.0:<local_mc_port>/<host_ip>:<mc_port>"
+```
+
+#### 方式二：运行时通过 CLI 动态添加
+
+在 `easytier-core` 启动后，通过 `easytier-cli` 向 RPC 端口发送指令动态添加规则：
 
 ```bash
 # 脚手架端口转发（TCP）
@@ -152,6 +179,8 @@ easytier-cli -p "127.0.0.1:<rpc_port>" port-forward add udp \
   "0.0.0.0:<local_mc_port>" "<host_ip>:<mc_port>"
 ```
 
+陶瓦房客侧实际采用**运行时 CLI 动态添加**的方式：先启动 EasyTier 加入网络并发现房主，获取到房主虚拟 IP 与端口后再执行端口转发。启动参数方式适用于已知远端地址、无需动态发现的场景。
+
 - 陶瓦会优先尝试让 `<local_mc_port>` 与房主的 `<mc_port>` 相同，以保证 SimpleVoiceChat 等依赖 UDP 的 Mod 正常工作；失败则退化为随机端口。
 - 脚手架端口转发只需 TCP。
 
@@ -159,12 +188,10 @@ easytier-cli -p "127.0.0.1:<rpc_port>" port-forward add udp \
 
 根据双方 NAT 类型估算连接难度，用于向用户提示：
 
-```
-if 任一方 == OpenInternet      → Easiest
-else if 任一方 in [NoPAT, FullCone]    → Simple
-else if 任一方 in [Restricted, PortRestricted] → Medium
-else                                    → Tough
-```
+- 若任一方为 `OpenInternet`，则难度为 **Easiest**；
+- 否则，若任一方为 `NoPAT` 或 `FullCone`，则难度为 **Simple**；
+- 否则，若任一方为 `Restricted` 或 `PortRestricted`，则难度为 **Medium**；
+- 其余情况为 **Tough**。
 
 NAT 类型取值：`Unknown`、`OpenInternet`、`NoPAT`、`FullCone`、`Restricted`、`PortRestricted`、`Symmetric`、`SymmetricUdpWall`、`SymmetricEasyIncrease`、`SymmetricEasyDecrease`。
 
@@ -182,34 +209,20 @@ NAT 类型取值：`Unknown`、`OpenInternet`、`NoPAT`、`FullCone`、`Restrict
 
 #### 请求帧（客户端 → 服务端）
 
-```
-+---------------+------------------------+------------------------+
-| kind_size(1B) | kind string (UTF-8)    | body_size(4B, big-endian) |
-+---------------+------------------------+------------------------+
-|                                     body (body_size bytes)                  |
-+-----------------------------------------------------------------------------+
-```
+请求帧依次由四部分组成：
 
-| 字段 | 长度 | 说明 |
-| --- | --- | --- |
-| `kind_size` | 1 字节 | `kind` 字符串的字节长度（最大 255） |
-| `kind` | `kind_size` 字节 | UTF-8 字符串，格式为 `namespace:path`，如 `c:ping` |
-| `body_size` | 4 字节 | `body` 的字节长度，大端无符号整数 |
-| `body` | `body_size` 字节 | 请求体，结构由具体协议定义 |
+- `kind_size`（1 字节）：`kind` 字符串的字节长度（最大 255）；
+- `kind`（`kind_size` 字节）：UTF-8 字符串，格式为 `namespace:path`，如 `c:ping`；
+- `body_size`（4 字节，大端无符号整数）：`body` 的字节长度；
+- `body`（`body_size` 字节）：请求体，结构由具体协议定义。
 
 #### 响应帧（服务端 → 客户端）
 
-```
-+------------+------------------------+----------------------------+
-| status(1B) | body_size(4B, big-endian) | body (body_size bytes) |
-+------------+------------------------+----------------------------+
-```
+响应帧依次由三部分组成：
 
-| 字段 | 长度 | 说明 |
-| --- | --- | --- |
-| `status` | 1 字节 | 状态码：`0` 表示成功，非 `0` 表示失败 |
-| `body_size` | 4 字节 | `body` 的字节长度，大端无符号整数 |
-| `body` | `body_size` 字节 | 响应体；失败时通常为错误描述文本 |
+- `status`（1 字节）：状态码，`0` 表示成功，非 `0` 表示失败；
+- `body_size`（4 字节，大端无符号整数）：`body` 的字节长度；
+- `body`（`body_size` 字节）：响应体；失败时通常为错误描述文本。
 
 未实现的协议返回 `status = 255`，body 为 `Requested protocol hasn't been implemented.`；处理异常同样返回 `status = 255`。
 
@@ -224,8 +237,6 @@ NAT 类型取值：`Unknown`、`OpenInternet`、`NoPAT`、`FullCone`、`Restrict
 | `c:server_port` | 获取房主 Minecraft 服务器端口 |
 | `c:player_ping` | 房客心跳与玩家注册 |
 | `c:player_profiles_list` | 获取房间内全部玩家列表 |
-
----
 
 ### `c:ping` — 握手 / 指纹验证
 
