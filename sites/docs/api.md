@@ -160,7 +160,7 @@ GET /state/scanning?room={邀请码}&player={显示名}&public_nodes={节点}&pu
 ```
 
 | 参数 | 必填 | 说明 |
-| --- | :-: | --- |
+| --- | --- | --- |
 | `room` | 否 | 使用指定房间码重新开房；省略时自动生成新房间 |
 | `player` | 否 | 房主显示名 |
 | `public_nodes` | 否 | 附加的 EasyTier 公共节点，可重复传入，会与内置公共节点合并 |
