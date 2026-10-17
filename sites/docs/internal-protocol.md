@@ -189,11 +189,11 @@ easytier-cli -p "127.0.0.1:<rpc_port>" port-forward add udp \
 根据双方 NAT 类型估算连接难度，用于向用户提示：
 
 - 若任一方为 `OpenInternet`，则难度为 **Easiest**；
-- 否则，若任一方为 `NoPAT` 或 `FullCone`，则难度为 **Simple**；
+- 否则，若任一方为 `NoPat` 或 `FullCone`，则难度为 **Simple**；
 - 否则，若任一方为 `Restricted` 或 `PortRestricted`，则难度为 **Medium**；
 - 其余情况为 **Tough**。
 
-NAT 类型取值：`Unknown`、`OpenInternet`、`NoPAT`、`FullCone`、`Restricted`、`PortRestricted`、`Symmetric`、`SymmetricUdpWall`、`SymmetricEasyIncrease`、`SymmetricEasyDecrease`。
+`nat_type` 字段的取值：`Unknown`、`OpenInternet`、`NoPat`、`FullCone`、`Restricted`、`PortRestricted`、`Symmetric`、`SymUdpFirewall`、`SymmetricEasyInc`、`SymmetricEasyDec`。
 
 ## 三、脚手架协议
 
@@ -320,7 +320,7 @@ NAT 类型取值：`Unknown`、`OpenInternet`、`NoPAT`、`FullCone`、`Restrict
 ### MACHINE_ID
 
 - 16 字节随机数的 hex 编码（32 个十六进制字符）。
-- 首次启动时生成并持久化，之后保持不变。
+- 首次启动时生成并持久化到数据文件，之后保持不变。注意：若数据文件无法打开（如权限问题），则每次启动时临时生成且不持久化——此边缘路径下当前实现生成 17 字节随机数（34 个十六进制字符），与正常路径长度不一致，集成方不应假定其长度恒为 32。
 - 用于唯一标识设备，避免玩家重复计数。
 
 ### VENDOR
