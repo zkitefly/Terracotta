@@ -20,6 +20,7 @@ theme:
 nav:
   - 首页: index.md
   - HTTP API: api.md
+  - Android API: android-api.md
   - 内部协议: internal-protocol.md
   - 公共节点: public-server.md
   - 集成列表: integrations.md
