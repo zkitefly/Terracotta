@@ -13,8 +13,8 @@
 
 ### PCL-CE
 
-- **官网**：[PCL2-CE-Web](https://pcl-community.github.io/PCL2-CE-Web/)
-- **源码**：[PCL-Community/PCL2-CE](https://github.com/PCL-Community/PCL2-CE)
+- **官网**：[PCL-CE](https://ce.pclc.cc)
+- **源码**：[PCL-Community/PCL-CE](https://github.com/PCL-Community/PCL-CE)
 
 ### FCL
 
@@ -31,7 +31,7 @@
 
 ### MoLaunch
 
-- **官网**：[molaunch.moiu.cn](https://molaunch.moiu.cn)
+- **官网**：[MoLaunch](https://molaunch.moiu.cn)
 - **源码**：[MoTeam-cn/MoLaunch](https://github.com/MoTeam-cn/MoLaunch)
 
 ### SJMCL
