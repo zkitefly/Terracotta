@@ -6,6 +6,7 @@ repo_name: Terracotta
 theme:
   name: material
   language: zh
+  favicon: sites/favicon.ico
   palette:
     scheme: default
     primary: red
