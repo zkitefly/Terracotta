@@ -23,7 +23,7 @@ Terracotta 提供该安装包的原因是 macOS 的本地网络权限问题：�
 osascript -e 'do shell script "installer -pkg <pkg 的绝对路径> -target /" with prompt "<本地化提示语>" with administrator privileges'
 ```
 
-由于 `installer` 需要管理员权限，此步必然弹出系统授权窗口，无法静默完成。
+由于 `installer` 需要管理员权限，此步必然弹出系统授权窗口，要求用户输入密码等获取权限。
 
 授权弹窗中的提示语可随启动器界面语言本地化。
 
@@ -31,8 +31,4 @@ osascript -e 'do shell script "installer -pkg <pkg 的绝对路径> -target /" w
 
 ## 启动核心
 
-安装完成后无需再触碰 `.pkg`，直接运行解包出的裸可执行文件即可：
-
-```bash
-<依赖目录>/terracotta/0.4.2/terracotta-0.4.2-macos-arm64 --hmcl <临时目录>/http
-```
+安装完成后无需再触碰 `.pkg`，直接运行解包出的裸可执行文件即可，参考 [API 文档](/api.md)。
