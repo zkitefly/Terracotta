@@ -11,4 +11,4 @@ https://etnode.zkitefly.eu.org/node1
 https://etnode.zkitefly.eu.org/node2
 ```
 
-如需接入自建或第三方公共节点，可通过 `public_nodes` 参数追加，详见 [HTTP API 接入指南](api.md)。
+如需接入自建或第三方公共节点，可通过 `public_nodes` 参数追加，详见 [HTTP API 接入指南](http-api.md)。

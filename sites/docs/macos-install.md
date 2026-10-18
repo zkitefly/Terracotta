@@ -31,4 +31,4 @@ osascript -e 'do shell script "installer -pkg <pkg 的绝对路径> -target /" w
 
 ## 启动核心
 
-安装完成后无需再触碰 `.pkg`，直接运行解包出的裸可执行文件即可，参考 [API 文档](api.md)。
+安装完成后无需再触碰 `.pkg`，直接运行解包出的裸可执行文件即可，参考 [API 文档](http-api.md)。
