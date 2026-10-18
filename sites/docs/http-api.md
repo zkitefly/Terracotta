@@ -196,7 +196,7 @@ GET /state/guesting?room={邀请码}&player={显示名}&public_nodes={节点}
 
 ## 房间邀请码格式
 
-参见 [内部协议](/internal-protocol.md)。
+参见 [内部协议](internal-protocol.md)。
 
 ## 典型接入流程
 
