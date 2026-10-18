@@ -1,6 +1,6 @@
 # 陶瓦公共节点
 
-节点由 [@zkitefly](https://github.com/zkitefly) 提供。可前往 [节点说明](https://github.com/zkitefly/easytier-node/blob/main/README.md) 查看详情。
+节点由 [@zkitefly](https://github.com/zkitefly) 提供。可前往 [节点说明](https://etnode.zkitefly.eu.org/about) 查看详情。
 
 该节点默认内置在陶瓦中，作为 EasyTier 公共节点，用于房主与房客之间的 P2P 连接。
 
