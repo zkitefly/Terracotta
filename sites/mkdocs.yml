@@ -28,6 +28,9 @@ nav:
   - 公共节点: public-server.md
   - 集成列表: integrations.md
 
+not_in_nav: |
+  404.md
+
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
