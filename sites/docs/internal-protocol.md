@@ -2,7 +2,7 @@
 
 > 本文档摘自 [Scaffolding-MC/Scaffolding-MC@fb4e615](https://github.com/Scaffolding-MC/Scaffolding-MC/blob/fb4e6154a5543e65ebc7dd749176b8f41cee5db9/README.md)。
 
-本协议仍在开发，若有问题或建议，可在 [Scaffolding-MC/Scaffolding-MC](https://github.com/Scaffolding-MC/Scaffolding-MC) 提交 Issue 或发起 Pull Request。
+> 本协议仍在开发，若有问题或建议，可在 [Scaffolding-MC/Scaffolding-MC](https://github.com/Scaffolding-MC/Scaffolding-MC) 提交 Issue 或发起 Pull Request。
 
 <!---
 
@@ -42,21 +42,21 @@ SOFTWARE.
 - 联机中心：承担 Scaffolding 协议中心服务器职责的联机客户端，运行在与 Minecraft 服务器 相同的物理机上；
 - 联机房客：处于联机网络中的其他联机客户端。
 
-# 协议定义
+## 协议定义
 
-## 联机房间码
+### 联机房间码
 
 联机中心应在 Minecraft 服务器启动后，通过密码学安全的随机数生成器，创建符合 `U/NNNN-NNNN-SSSS-SSSS` 形式的联机房间码，满足以下约束：
 
 - N 和 S 为任意大写字母（除去 I 和 O）和数字；
 - 按照 0-9、A-H、J-N、P-Z顺序映射至 [0, 33] 后，依“小端序”读得的整型应能被7整除。
 
-## 联机网络
+### 联机网络
 
 EasyTier 网络名称应为 `scaffolding-mc-NNNN-NNNN`，网络密钥应为 `SSSS-SSSS`。
 例如，房间码 `U/YNZE-U61D-2206-HXRG` 对应的 EasyTier 网络名称和密钥应分别为 `scaffolding-mc-YNZE-U61D` 和 `2206-HXRG`。
 
-## 联机中心发现协议
+### 联机中心发现协议
 
 每个 EasyTier 网络有且应仅有一联机中心。
 其 Hostname (https://easytier.cn/guide/network/configurations.html#其他设置) 应当为：
@@ -71,7 +71,7 @@ scaffolding-mc-server-{port: uint16}。
 > [!CAUTION]
 > 若一个 EasyTier 网络中存在多个符合上述协议的联机中心，则将为【未定义行为】
 
-## 联机信息获取协议
+### 联机信息获取协议
 
 该协议建立于 TCP 协议之上，地址为联机中心的虚拟 IP 地址，端口为联机中心的 port 参数。
 联机中心将在该接口开放 TCP服务器，接受符合如下标准的请求（大端序）：
@@ -99,20 +99,20 @@ scaffolding-mc-server-{port: uint16}。
 | [32, 64) | 协议定义的错误 | 若未由协议明确指出，默认为空 | /       |
 | 255      | 未知错误    | 错误详细内容         | UTF8字符串 |
 
-### 标准协议
+#### 标准协议
 
 标准协议请求类型的命名空间均为 c，代表 community。
 所有联机中心和联机房客都必须完整实现全部标准协议（标记为可选的除外）。
 
-#### 字段类型
+##### 字段类型
 
-##### machine_id
+###### machine_id
 
 各联机客户端应根据硬件信息生成足够长的字符串，避免碰撞，并尽力保证对同一设备始终产出稳定的结果。
 
-#### 通用协议
+##### 通用协议
 
-##### c:ping
+###### c:ping
 
 测试联机中心是否正常运行
 
@@ -121,7 +121,7 @@ scaffolding-mc-server-{port: uint16}。
 - 响应体：与请求体内容一致
 - 响应体格式：二进制内容，长度应与请求体一致
 
-##### c:protocols
+###### c:protocols
 
 与联机中心协商协议列表
 
@@ -130,7 +130,7 @@ scaffolding-mc-server-{port: uint16}。
 - 响应体：联机中心所支持的协议列表；
 - 响应体格式：由 `\0` 分割的多个 ASCII String，如 c:protocols\0c:server_addresses\0c:player_name。
 
-##### c:server_port
+###### c:server_port
 
 获取 Minecraft 服务器的地址
 
@@ -140,9 +140,9 @@ scaffolding-mc-server-{port: uint16}。
 - 错误状态：
     * 32：服务器未启动
 
-#### 玩家
+##### 玩家
 
-##### c:player_ping [心跳/5秒]
+###### c:player_ping [心跳/5秒]
 
 - 请求体：玩家 ID、设备 machine_id 和 EasyTier Node ID
 - 请求体格式（JSON）：
@@ -152,9 +152,9 @@ scaffolding-mc-server-{port: uint16}。
 
 > 联机中心应使用 machine_id 来作为所有节点的唯一标识符。
 
-##### c:player_easytier_id [协议协商标识]
+###### c:player_easytier_id [协议协商标识]
 
-##### c:player_profiles_list
+###### c:player_profiles_list
 
 - 请求体：空
 - 响应体：玩家列表（包括房主）
@@ -164,7 +164,7 @@ scaffolding-mc-server-{port: uint16}。
 
 > 联机中心应使用 machine_id 来作为所有节点的唯一标识符。
 
-#### 拓展协议
+##### 拓展协议
 
 各联机客户端可以自行实现协议，选用自己的命名空间。
 请尽量选用联机客户端的名称作为命名空间，以避免命名空间冲突！
