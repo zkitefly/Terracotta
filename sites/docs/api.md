@@ -196,9 +196,7 @@ GET /state/guesting?room={邀请码}&player={显示名}&public_nodes={节点}
 
 ## 房间邀请码格式
 
-- 格式为 `U/XXXX-XXXX-XXXX-XXXX`，字符集为 `0123456789ABCDEFGHJKLMNPQRSTUVWXYZ`（34 个字符，不含 `I` 和 `O`）。
-- 内部含校验机制（编码值须能被 7 整除），可有效防止误输入。
-- 解析较为宽松：大小写不敏感，`I` / `O` 会自动纠正为 `1` / `0`，且允许邀请码嵌在更长的文本中（如「房间码是 U/1234-ABCD-5678-EFGH，快来」也能识别）。
+参见 [内部协议](/internal-protocol.md)。
 
 ## 典型接入流程
 
