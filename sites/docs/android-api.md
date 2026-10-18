@@ -40,7 +40,7 @@ Log.i("Terracotta", "version=" + metadata.getTerracottaVersion()
 
 ### 读取状态
 
-`getState()` 返回一个 JSON 字符串，结构同 [HTTP API 的 `/state`](api.md#get-state)：
+`getState()` 返回一个 JSON 字符串，结构同 [HTTP API 的 `/state`](api.md)：
 
 - `index` 字段单调递增，每次状态变化（含成员变动）都会自增。轮询方应记录已见过的最大 `index`，忽略未增大的响应。
 - `state` 字段标识当前状态：`waiting` / `host-scanning` / `host-starting` / `host-ok` / `guest-connecting` / `guest-starting` / `guest-ok` / `exception`。
@@ -133,7 +133,7 @@ try (Reader reader = TerracottaAndroidAPI.collectLogs()) {
 ## 异常处理
 
 - 原生层出现不可恢复错误（内部 panic 等）时，正在进行的 JNI 调用会抛出 `RuntimeException`。
-- 房间生命周期内的可恢复错误（连接失败、EasyTier 崩溃、房主 MC 失联等）不会抛异常，而是通过 `getState()` 返回 `exception` 状态上报，具体子类型见 [HTTP API 文档](api.md#exception)。
+- 房间生命周期内的可恢复错误（连接失败、EasyTier 崩溃、房主 MC 失联等）不会抛异常，而是通过 `getState()` 返回 `exception` 状态上报，具体子类型见 [HTTP API 文档](api.md)。
 - `TerracottaAndroidAPI.panic()` 是仅用于调试的入口，调用后原生层立即 panic 并抛 `RuntimeException`，请勿在生产环境使用。
 
 ## 典型接入流程
