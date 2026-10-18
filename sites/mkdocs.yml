@@ -1,0 +1,36 @@
+site_name: Terracotta
+site_description: Terracotta
+site_dir: sites
+repo_url: https://github.com/burningtnt/Terracotta
+repo_name: Terracotta
+theme:
+  name: material
+  language: zh
+  palette:
+    scheme: default
+    primary: red
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+
+nav:
+  - 首页: index.md
+  - HTTP API: api.md
+  - Android API: android-api.md
+  - 内部协议: internal-protocol.md
+  - 公共节点: public-server.md
+  - 集成列表: integrations.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed
+  - admonition
+  - footnotes
